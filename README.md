@@ -33,7 +33,7 @@ bash test-ios.sh
 
 The IPA is `build/OceanStateAI-unsigned.ipa`. It is not directly installable; sign it using your own compatible sideloading tool/account. Using the same signing identity and bundle identifier allows an in-place update. Free-account provisioning normally needs periodic renewal. Never put Apple passwords in chat, commits or workflow secrets.
 
-The manually triggered GitHub Actions workflow uses a standard `macos-latest` runner in this public repository. It builds an arm64 IPA, validates its ZIP, runs native client tests on an iPhone simulator and exports a screenshot and XCTest results. Standard hosted compute is free for public repositories; private repositories and other runner types have separate billing. No signing credentials, server data or model weights belong in this repository.
+The manually triggered GitHub Actions workflow uses a standard `macos-latest` runner in this public repository. It builds an arm64 IPA, validates its ZIP, runs shared request/history tests using Swift Package Manager and captures native layouts in an iPhone simulator. The full iOS XCTest script remains available separately; separating portable tests from simulator startup avoids making core verification depend on the XCTest simulator launcher. Standard hosted compute is free for public repositories; private repositories and other runner types have separate billing. No signing credentials, server data or model weights belong in this repository.
 
 ## Connection and server integration
 
