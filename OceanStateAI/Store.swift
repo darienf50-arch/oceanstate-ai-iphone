@@ -3,7 +3,7 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 @MainActor
-final class OceanStore: ObservableObject {
+final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate {
     @Published var api: OceanAPI?
     @Published var connected = false
     @Published var busy = false
@@ -21,14 +21,16 @@ final class OceanStore: ObservableObject {
     @Published var title = "New conversation"
     @Published var selectedModel = ""
     @Published var selectedTools = Set<String>()
-    @Published var webSearch = false
-    @Published var imageGeneration = false
-    @Published var codeInterpreter = false
+    @Published var webSearch = true
+    @Published var imageGeneration = true
+    @Published var codeInterpreter = true
+    @Published var memory = true
     @Published var systemPrompt = ""
     @Published var temperature = 0.7
     @Published var useTemperature = false
     @Published var recording = false
     @Published var playing = false
+    @Published var voiceConversation = false
     @Published var hasMoreChats = true
     private var page = 1
     private var monitor: Task<Void, Never>?
@@ -38,6 +40,7 @@ final class OceanStore: ObservableObject {
     private var activeReplyID: String?
     private var requestPending = false
     private var lastChat: Object = [:]
+    private var toolsInitialized = false
     private let defaults = UserDefaults.standard
     var serverText: String { defaults.string(forKey: "nativeServer") ?? defaults.string(forKey: "serverURL") ?? "" }
     var modelName: String { models.first { $0.id == selectedModel }?.name ?? "Choose model" }
@@ -61,7 +64,7 @@ final class OceanStore: ObservableObject {
             try TokenVault.save(token, server: url)
             candidate.token = token; api = candidate
             defaults.set(url.absoluteString, forKey: "nativeServer")
-            clearConversation(); selectedTools = []; selectedModel = ""
+            clearConversation(); selectedTools = []; selectedModel = ""; toolsInitialized = false
             try await loadCatalog(); connected = true; error = nil
         } catch { self.error = error.localizedDescription }
     }
@@ -83,6 +86,10 @@ final class OceanStore: ObservableObject {
                 return ServerTool(id: id, name: $0["name"] as? String ?? id, detail: ($0["meta"] as? Object)?["description"] as? String ?? "")
             }
             selectedTools.formIntersection(Set(tools.map(\.id)))
+            if !toolsInitialized {
+                selectedTools = Set(tools.filter { $0.id == "oceanstate_computer" }.map(\.id))
+                toolsInitialized = true
+            }
         } catch { notice = "Tools could not be loaded: \(error.localizedDescription)" }
         try await loadChats(reset: true)
     }
@@ -152,7 +159,7 @@ final class OceanStore: ObservableObject {
                             "session_id": "oceanstate-ios-" + UUID().uuidString,
                             "id": replyID, "parent_id": parentID as Any? ?? NSNull(), "user_message": user,
                             "tool_ids": Array(selectedTools), "files": files, "params": params,
-                            "features": ["web_search": webSearch, "image_generation": imageGeneration, "code_interpreter": codeInterpreter]]
+                            "features": ["web_search": webSearch, "image_generation": imageGeneration, "code_interpreter": codeInterpreter, "memory": memory]]
         if let chatID { body["chat_id"] = chatID }
         messages = context + [.parse(user), .parse(placeholder)]
         activeReplyID = replyID
@@ -190,7 +197,12 @@ final class OceanStore: ObservableObject {
                     try Task.checkCancellation()
                     try await self.refreshChat(id)
                     failures = 0
-                    if !self.sending { break }
+                    if !self.sending {
+                        if self.voiceConversation, let reply = self.messages.last, reply.role == "assistant", reply.error == nil, !reply.text.isEmpty {
+                            await self.speak(reply.text)
+                        }
+                        break
+                    }
                 } catch is CancellationError { break }
                 catch {
                     failures += 1
@@ -246,6 +258,10 @@ final class OceanStore: ObservableObject {
                 let result = try await api.upload(Data(contentsOf: url), name: "voice.m4a", mime: "audio/mp4", transcription: true)
                 guard let text = result["text"] as? String else { throw APIError(message: "No transcription returned.") }
                 draft += (draft.isEmpty ? "" : "\n") + text
+                if voiceConversation {
+                    busy = false
+                    await send()
+                }
             } catch { self.error = error.localizedDescription }
             return
         }
@@ -257,6 +273,7 @@ final class OceanStore: ObservableObject {
             try audio.setActive(true)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
             recorder = try AVAudioRecorder(url: url, settings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 24000, AVNumberOfChannelsKey: 1, AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue])
+            recorder?.delegate = self
             guard recorder?.record(forDuration: 120) == true else { throw APIError(message: "Recording could not start.") }
             recordingURL = url; recording = true
         } catch { self.error = error.localizedDescription }
@@ -267,10 +284,27 @@ final class OceanStore: ObservableObject {
             let data = try await api.speech(text)
             try AVAudioSession.sharedInstance().setCategory(.playback)
             try AVAudioSession.sharedInstance().setActive(true)
-            player = try AVAudioPlayer(data: data); player?.play(); playing = true
+            player = try AVAudioPlayer(data: data); player?.delegate = self; player?.play(); playing = true
         } catch { self.error = error.localizedDescription }
     }
     func stopAudio() { player?.stop(); playing = false }
+    func endVoiceConversation() {
+        voiceConversation = false; stopAudio(); recorder?.stop(); recording = false
+        if let url = recordingURL { try? FileManager.default.removeItem(at: url) }
+    }
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.playing = false
+            if flag && self.voiceConversation && UIApplication.shared.applicationState == .active { await self.toggleRecording() }
+        }
+    }
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self, self.recording else { return }
+            if flag { await self.toggleRecording() } else { self.recording = false; self.error = "Voice recording was interrupted." }
+        }
+    }
     func signOut() {
         guard !sending, !requestPending else { error = "Stop the current task or open a new conversation before signing out."; return }
         if let api { try? TokenVault.save(nil, server: api.base) }

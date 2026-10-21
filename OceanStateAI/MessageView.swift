@@ -11,7 +11,7 @@ struct MessageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: message.role == "user" ? "person.crop.circle" : "water.waves").foregroundStyle(message.role == "user" ? .secondary : .cyan)
+                Image(systemName: message.role == "user" ? "person.crop.circle" : "water.waves").foregroundStyle(message.role == "user" ? Color.gray : Color.cyan)
                 Text(message.role == "user" ? "You" : "Ocean State AI").font(.subheadline.weight(.semibold))
                 Spacer()
                 if !message.done { Text("In progress").font(.caption2).foregroundStyle(.cyan) }

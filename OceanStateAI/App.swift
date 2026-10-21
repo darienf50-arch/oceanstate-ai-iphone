@@ -22,6 +22,8 @@ struct OceanRoot: View {
     @State private var showStudio = false
     @State private var importFile = false
     @State private var photo: PhotosPickerItem?
+    @State private var showCamera = false
+    @State private var showVoice = false
     private let background = Color(red: 0.035, green: 0.055, blue: 0.085)
 
     var body: some View {
@@ -48,6 +50,8 @@ struct OceanRoot: View {
         .sheet(isPresented: $showHistory) { HistoryView() }
         .sheet(isPresented: $showControls) { ControlsView() }
         .sheet(isPresented: $showStudio) { StudioView() }
+        .sheet(isPresented: $showVoice) { VoiceConversationView() }
+        .fullScreenCover(isPresented: $showCamera) { CameraCapture { data in Task { await store.attach(data: data, name: "Camera.jpg", mime: "image/jpeg") } } }
         .fileImporter(isPresented: $importFile, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
             switch result {
             case .success(let urls): if let url = urls.first { Task { await store.importFile(url) } }
@@ -59,8 +63,8 @@ struct OceanRoot: View {
             Task {
                 do {
                     if let data = try await selected.loadTransferable(type: Data.self) {
-                        let type = selected.supportedContentTypes.first ?? .jpeg
-                        await store.attach(data: data, name: "Photo.\(type.preferredFilenameExtension ?? "jpg")", mime: type.preferredMIMEType ?? "image/jpeg")
+                        guard let image = UIImage(data: data), let jpeg = image.jpegData(compressionQuality: 0.85) else { throw APIError(message: "This photo could not be decoded.") }
+                        await store.attach(data: jpeg, name: "Photo.jpg", mime: "image/jpeg")
                     }
                 } catch { store.error = error.localizedDescription }
                 photo = nil
@@ -152,6 +156,8 @@ struct OceanRoot: View {
             HStack(alignment: .bottom, spacing: 12) {
                 Menu {
                     Button("Attach file", systemImage: "doc.badge.plus") { importFile = true }
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) { Button("Take photo", systemImage: "camera") { showCamera = true } }
+                    Button("Voice conversation", systemImage: "waveform") { showVoice = true }
                     Button("Workflow starters", systemImage: "sparkles") { showStudio = true }
                     Button("Tools and controls", systemImage: "slider.horizontal.3") { showControls = true }
                 } label: { Image(systemName: "plus").font(.title3).frame(height: 36) }.disabled(store.sending || store.uploading)
@@ -159,7 +165,7 @@ struct OceanRoot: View {
                     .disabled(store.sending || store.uploading).accessibilityLabel("Attach photo")
                 TextField("Message Ocean State AI", text: $store.draft, axis: .vertical).lineLimit(1...7).padding(.vertical, 8)
                 Button { Task { await store.toggleRecording() } } label: {
-                    Image(systemName: store.recording ? "stop.circle.fill" : "mic").foregroundStyle(store.recording ? .red : .secondary).frame(height: 36)
+                    Image(systemName: store.recording ? "stop.circle.fill" : "mic").foregroundStyle(store.recording ? Color.red : Color.gray).frame(height: 36)
                 }.disabled(store.busy || store.sending).accessibilityLabel(store.recording ? "Stop recording" : "Record voice message")
                 if store.sending {
                     Button { Task { await store.stop() } } label: { Image(systemName: "stop.fill").padding(10).background(.white, in: Circle()).foregroundStyle(.black) }.accessibilityLabel("Stop task")
@@ -236,6 +242,7 @@ struct ControlsView: View {
                     Toggle("Web search", isOn: $store.webSearch)
                     Toggle("Image generation", isOn: $store.imageGeneration)
                     Toggle("Code interpreter", isOn: $store.codeInterpreter)
+                    Toggle("Server memory", isOn: $store.memory)
                 } header: { Text("Server features") } footer: { Text("These use the features enabled on your server and supported by the selected model. PC coding, video, agency and workspace tools can be selected below.") }
                 Section {
                     ForEach(store.tools) { tool in
