@@ -92,7 +92,7 @@ struct OceanRoot: View {
                 }.disabled(store.sending)
                 Spacer()
                 Button { showControls = true } label: {
-                    Label(store.selectedTools.isEmpty ? "Controls" : "\(store.selectedTools.count) tools", systemImage: "slider.horizontal.3").font(.caption)
+                    Label(store.selectedTools.isEmpty ? "Controls" : "\(store.selectedTools.count) \(store.selectedTools.count == 1 ? "tool" : "tools")", systemImage: "slider.horizontal.3").font(.caption)
                 }
             }.padding(.horizontal).padding(.vertical, 10)
             if let notice = store.notice {
@@ -100,8 +100,7 @@ struct OceanRoot: View {
                     .padding(10).background(.cyan.opacity(0.09))
             }
             if store.messages.isEmpty { welcome } else { transcript }
-            composer
-        }
+        }.safeAreaInset(edge: .bottom, spacing: 0) { composer }
     }
     private var welcome: some View {
         ScrollView {
@@ -310,6 +309,7 @@ struct ControlsView: View {
                 } header: { Text("PC tools") } footer: { Text("Selected tools allow the model to act on your PC using your existing server permissions. Review the tool activity in each reply. Existing server approval rules still apply.") }
                 Section("Response preferences") {
                     TextField("Additional instructions", text: $store.systemPrompt, axis: .vertical).lineLimit(3...8)
+                    Text("Your server’s model presets may override additional instructions. Instruction precedence is still being verified.").font(.caption).foregroundStyle(.secondary)
                     Toggle("Custom temperature", isOn: $store.useTemperature)
                     if store.useTemperature { Slider(value: $store.temperature, in: 0...2, step: 0.1); Text("Temperature \(store.temperature, specifier: "%.1f")").font(.caption) }
                 }

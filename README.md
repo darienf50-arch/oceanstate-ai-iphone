@@ -16,6 +16,8 @@ A SwiftUI iPhone workspace for a PC-hosted Ocean State AI installation. Version 
 
 ## Remaining work
 
+Known compatibility issue: project instructions were present in the server request context, but the selected presets did not follow a simple instruction check. Project grouping works; project knowledge and instruction precedence are not verified. Treat additional per-chat instructions as best effort until server prompt handling is resolved.
+
 This is a native preview, not complete ChatGPT or WebUI feature parity. Dedicated PC filesystem/editor/terminal screens, agency/CRM and automation dashboards, memory management, interactive artifacts, realtime voice, live camera/screen sharing, push notifications, OAuth/MFA flows and offline AI remain to be implemented. Server tools can expose PC coding, media, business and scheduling capabilities through chat; workflow cards prepare prompts, not completed jobs. Browser-only tools requiring callbacks into a WebUI browser session are not supported.
 
 Image/video generation and research depend on server providers and model capabilities. Compiling an app and testing APIs does not establish generation quality or physical iPhone behavior. Do not claim those features were device-tested until acceptance checks have been completed.

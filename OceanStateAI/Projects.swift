@@ -9,7 +9,7 @@ struct ProjectView: View {
     @State private var failed: String?
     var body: some View {
         List {
-            Section { Text("Conversations in this project use its existing server-side context and knowledge. Coding files on your PC are managed by the PC tools.").font(.footnote).foregroundStyle(.secondary) }
+            Section { Text("Projects group your server conversations. Project instructions and knowledge still need compatibility testing. Coding files on your PC are managed by the PC tools.").font(.footnote).foregroundStyle(.secondary) }
             Button("New project conversation", systemImage: "square.and.pencil") {
                 store.newConversation(); store.folderID = project.id; closeHistory()
             }
