@@ -139,8 +139,14 @@ struct OceanRoot: View {
                     Color.clear.frame(height: 1).id("bottom")
                 }.frame(maxWidth: 720).padding(.horizontal, 18).padding(.bottom, 18).frame(maxWidth: .infinity)
             }
-            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
+            .overlay(alignment: .bottomTrailing) {
+                if store.sending || store.messages.count > 2 {
+                    Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: {
+                        Image(systemName: "arrow.down").padding(10).background(.ultraThinMaterial, in: Circle())
+                    }.padding(12).accessibilityLabel("Jump to latest message")
+                }
+            }
             .onChange(of: store.messages.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
         }
     }
