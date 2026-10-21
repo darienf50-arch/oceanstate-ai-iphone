@@ -1,0 +1,22 @@
+name: Build Ocean State AI IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install project generator
+        run: brew install xcodegen
+      - name: Build unsigned device IPA
+        run: bash build-ipa.sh
+      - name: Upload IPA for signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: OceanStateAI-unsigned
+          path: build/OceanStateAI-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
