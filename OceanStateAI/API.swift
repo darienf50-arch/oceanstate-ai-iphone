@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import UniformTypeIdentifiers
 
 enum TokenVault {
     static func key(_ server: URL) -> String { "native:" + server.absoluteString }
@@ -101,10 +102,26 @@ final class OceanAPI {
         }
         return result
     }
-    func download(_ url: URL) async throws -> Data {
+    func mediaRequest(_ url: URL) throws -> URLRequest {
+        guard url.scheme?.lowercased() == "https" else { throw APIError(message: "Media downloads require HTTPS.") }
         var req = URLRequest(url: url)
         if ServerAddress.sameOrigin(base, url), let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        return try await checked(req)
+        return req
+    }
+    func download(_ url: URL) async throws -> Data {
+        try await checked(mediaRequest(url))
+    }
+    func downloadFile(_ url: URL, name: String) async throws -> URL {
+        let (temporary, response) = try await session.download(for: mediaRequest(url))
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError(message: "This file could not be downloaded. Check the connection and your login.")
+        }
+        let namedExtension = (name as NSString).pathExtension
+        let mimeExtension = http.mimeType.flatMap { UTType(mimeType: $0)?.preferredFilenameExtension }
+        let ext = !namedExtension.isEmpty ? namedExtension : (!url.pathExtension.isEmpty ? url.pathExtension : (mimeExtension ?? "bin"))
+        let target = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
+        try FileManager.default.moveItem(at: temporary, to: target)
+        return target
     }
     func speech(_ text: String) async throws -> Data {
         try await checked(request("/api/v1/audio/speech", method: "POST", body: ["input": text]))

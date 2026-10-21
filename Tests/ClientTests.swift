@@ -49,4 +49,10 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(api.resource(path)?.absoluteString, "https://example.com" + path)
         XCTAssertNil(api.resource("http://example.com/image"))
     }
+    func testMediaCredentialsStayOnOwnServer() throws {
+        let api = OceanAPI(base: URL(string: "https://example.com")!, token: "test-token")
+        XCTAssertEqual(try api.mediaRequest(URL(string: "https://example.com/file")!).value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+        XCTAssertNil(try api.mediaRequest(URL(string: "https://cdn.example.com/video.mp4")!).value(forHTTPHeaderField: "Authorization"))
+        XCTAssertThrowsError(try api.mediaRequest(URL(string: "http://example.com/file")!))
+    }
 }

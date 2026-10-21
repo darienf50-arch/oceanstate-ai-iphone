@@ -235,12 +235,11 @@ struct RemoteAttachment: View {
     }
     private func open() async {
         loading = true; defer { loading = false }
-        if data == nil { await fetch() }
-        guard let data else { store.error = "Could not download this attachment."; return }
-        let suffix = store.api?.resource(source)?.pathExtension ?? ""
-        let ext = suffix.isEmpty ? (image ? "png" : "bin") : suffix
-        let target = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + ext)
-        do { try data.write(to: target); preview = PreviewFile(url: target) } catch { store.error = error.localizedDescription }
+        guard let api = store.api, let url = api.resource(source) else { store.error = "The attachment address is invalid."; return }
+        do {
+            let target = try await api.downloadFile(url, name: name)
+            preview = PreviewFile(url: target); failed = false
+        } catch { failed = true; store.error = error.localizedDescription }
     }
 }
 
