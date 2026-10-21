@@ -91,7 +91,7 @@ final class OceanAPI {
     }
     func upload(_ data: Data, name: String, mime: String, transcription: Bool = false) async throws -> Object {
         let boundary = UUID().uuidString
-        let process = mime.hasPrefix("image/") ? "false" : "true"
+        let process = (mime.hasPrefix("image/") || mime.hasPrefix("video/")) ? "false" : "true"
         var req = try request(transcription ? "/api/v1/audio/transcriptions" : "/api/v1/files/?process=\(process)&process_in_background=false", method: "POST")
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         let safeName = name.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")

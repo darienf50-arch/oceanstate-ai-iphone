@@ -2,6 +2,35 @@ import Foundation
 
 typealias Object = [String: Any]
 
+struct MediaPiece: Equatable {
+    let text: String
+    let source: String?
+    let kind: String?
+}
+
+enum MediaMarkup {
+    static func pieces(_ text: String) -> [MediaPiece] {
+        let pattern = "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)\\)|<(video|audio)[^>]*src=[\"']([^\"']+)[\"'][^>]*>(?:.*?)</(?:video|audio)>"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive]) else { return [] }
+        let ns = text as NSString
+        var result: [MediaPiece] = []
+        var cursor = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            if match.range.location > cursor {
+                result.append(MediaPiece(text: ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), source: nil, kind: nil))
+            }
+            let isImage = match.range(at: 2).location != NSNotFound
+            let kind = isImage ? "image" : ns.substring(with: match.range(at: 3)).lowercased()
+            let label = isImage ? ns.substring(with: match.range(at: 1)) : "Generated " + kind
+            let source = ns.substring(with: match.range(at: isImage ? 2 : 4)).replacingOccurrences(of: "&amp;", with: "&")
+            result.append(MediaPiece(text: label, source: source, kind: kind))
+            cursor = NSMaxRange(match.range)
+        }
+        if cursor < ns.length { result.append(MediaPiece(text: ns.substring(from: cursor), source: nil, kind: nil)) }
+        return result
+    }
+}
+
 struct ServerModel: Identifiable {
     let id: String
     let name: String

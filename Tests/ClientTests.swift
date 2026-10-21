@@ -2,6 +2,20 @@ import XCTest
 @testable import OceanStateAI
 
 final class ClientTests: XCTestCase {
+    func testThreeInlineVideosRemainThreePlayers() {
+        let text = (1...3).map { "Clip \($0)\n<video src=\"/oceanstate-clips/job/clip-0\($0).mp4?access=sample\" controls playsinline></video>" }.joined(separator: "\n\n")
+        let videos = MediaMarkup.pieces(text).filter { $0.kind == "video" }
+        XCTAssertEqual(videos.count, 3)
+        XCTAssertEqual(Set(videos.compactMap(\.source)).count, 3)
+        XCTAssertEqual(videos[1].source, "/oceanstate-clips/job/clip-02.mp4?access=sample")
+    }
+    func testMixedMediaAndTextPreserved() {
+        let pieces = MediaMarkup.pieces("Before ![photo](/image.png) between <VIDEO src='/clip.mp4?a=1&amp;b=2' controls></VIDEO> after")
+        XCTAssertEqual(pieces.filter { $0.source != nil }.count, 2)
+        XCTAssertEqual(pieces.first?.text, "Before ")
+        XCTAssertEqual(pieces.last?.text, " after")
+        XCTAssertEqual(pieces.first { $0.kind == "video" }?.source, "/clip.mp4?a=1&b=2")
+    }
     func testSelectedBranchExcludesAlternateReplies() {
         let chat: Object = ["history": ["currentId": "b2", "messages": [
             "u1": ["role": "user", "content": "Hello", "parentId": NSNull()],

@@ -1,5 +1,6 @@
 import SwiftUI
 import QuickLook
+import AVKit
 
 struct PreviewFile: Identifiable { let id = UUID(); let url: URL }
 
@@ -185,25 +186,13 @@ struct NativeMarkdown: View {
         }.background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 12)).clipShape(RoundedRectangle(cornerRadius: 12))
     }
     private func prose(_ text: String) -> some View {
-        let regex = try? NSRegularExpression(pattern: "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)\\)|<(video|audio)[^>]*src=[\"']([^\"']+)[\"'][^>]*>(?:.*?)</(?:video|audio)>", options: [.dotMatchesLineSeparators, .caseInsensitive])
-        let ns = text as NSString
-        let matches = regex?.matches(in: text, range: NSRange(location: 0, length: ns.length)) ?? []
-        var cursor = 0
-        var pieces: [(String, String?)] = []
-        for match in matches {
-            if match.range.location > cursor { pieces.append((ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), nil)) }
-            if match.range(at: 2).location != NSNotFound {
-                pieces.append((ns.substring(with: match.range(at: 1)), ns.substring(with: match.range(at: 2))))
-            } else {
-                pieces.append(("Generated " + ns.substring(with: match.range(at: 3)), ns.substring(with: match.range(at: 4))))
-            }
-            cursor = NSMaxRange(match.range)
-        }
-        if cursor < ns.length { pieces.append((ns.substring(from: cursor), nil)) }
+        let pieces = MediaMarkup.pieces(text)
         return VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
-                if let source = piece.1 { RemoteAttachment(source: source, name: piece.0.isEmpty ? "Generated image" : piece.0, image: !piece.0.hasPrefix("Generated video") && !piece.0.hasPrefix("Generated audio")) }
-                else { Text((try? AttributedString(markdown: piece.0, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(piece.0)).textSelection(.enabled).lineSpacing(4) }
+                if let source = piece.source {
+                    if piece.kind == "video" { InlineVideo(source: source) }
+                    else { RemoteAttachment(source: source, name: piece.text.isEmpty ? "Generated image" : piece.text, image: piece.kind == "image") }
+                } else { Text((try? AttributedString(markdown: piece.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(piece.text)).textSelection(.enabled).lineSpacing(4) }
             }
         }
     }
@@ -220,7 +209,9 @@ struct RemoteAttachment: View {
     @State private var loading = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if image, let data, let ui = UIImage(data: data) {
+            if !image && (name.hasPrefix("Generated video") || URL(string: source)?.pathExtension.lowercased() == "mp4") {
+                InlineVideo(source: source)
+            } else if image, let data, let ui = UIImage(data: data) {
                 Image(uiImage: ui).resizable().scaledToFit().frame(maxHeight: 400).clipShape(RoundedRectangle(cornerRadius: 14))
             } else if image, !failed { ProgressView().frame(height: 80) }
             Button { Task { await open() } } label: { Label(loading ? "Downloading…" : name, systemImage: image ? "photo" : "doc") }.disabled(loading)
@@ -240,6 +231,42 @@ struct RemoteAttachment: View {
             let target = try await api.downloadFile(url, name: name)
             preview = PreviewFile(url: target); failed = false
         } catch { failed = true; store.error = error.localizedDescription }
+    }
+}
+
+/// Fetch through the credential-isolated API, then play the local file in chat.
+struct InlineVideo: View {
+    @EnvironmentObject var store: OceanStore
+    let source: String
+    @State private var player: AVPlayer?
+    @State private var error: String?
+    @State private var localFile: URL?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let player {
+                VideoPlayer(player: player)
+                    .frame(height: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel("Video in conversation")
+            } else if let error {
+                Label(error, systemImage: "exclamationmark.triangle").font(.caption)
+                Button("Retry playback") { Task { await load() } }
+            } else {
+                ProgressView("Loading video…").frame(height: 160)
+            }
+        }
+        .task(id: source) { await load() }
+        .onDisappear { player?.pause() }
+    }
+    private func load() async {
+        guard player == nil, let api = store.api, let url = api.resource(source) else { return }
+        error = nil
+        do {
+            let file = try await api.downloadFile(url, name: "video.mp4")
+            if Task.isCancelled { try? FileManager.default.removeItem(at: file); return }
+            localFile = file
+            player = AVPlayer(url: file)
+        } catch { self.error = error.localizedDescription }
     }
 }
 
