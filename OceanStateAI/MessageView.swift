@@ -8,6 +8,7 @@ struct MessageView: View {
     let message: ChatMessage
     @State private var editing = false
     @State private var editedText = ""
+    @State private var activityExpanded = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -25,7 +26,7 @@ struct MessageView: View {
                 }
             }
             if !message.tools.isEmpty {
-                DisclosureGroup("Tool activity · \(message.tools.count)") {
+                DisclosureGroup("Tool activity · \(message.tools.count)", isExpanded: $activityExpanded) {
                     VStack(alignment: .leading, spacing: 16) {
                         ForEach(Array(message.tools.enumerated()), id: \.offset) { _, tool in ToolActivity(tool: tool, message: message) }
                     }.padding(.top, 8)
@@ -66,6 +67,11 @@ struct MessageView: View {
                     }
             }
         }
+        .onAppear { expandPending() }
+        .onChange(of: message.tools.map { $0["status"] as? String ?? "" }.joined()) { _, _ in expandPending() }
+    }
+    private func expandPending() {
+        if message.tools.contains(where: { ["pending", "requires_approval"].contains($0["status"] as? String ?? "") }) { activityExpanded = true }
     }
 }
 
@@ -86,10 +92,15 @@ struct ToolActivity: View {
             DisclosureGroup("Arguments") { Text(formatted(tool["arguments"])).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
             if let result { DisclosureGroup("Result") { Text(formatted(result["output"])).font(.system(.caption, design: .monospaced)).textSelection(.enabled) } }
             if pending {
-                HStack {
-                    Button("Review & approve") { confirming = true }.buttonStyle(.borderedProminent)
-                    Button("Reject", role: .destructive) { resolve("reject") }.buttonStyle(.bordered)
-                }.disabled(resolving)
+                if (tool["name"] as? String) == "ask_user" {
+                    UserQuestionForm(arguments: tool["arguments"]) { answers in resolve("answer", answers: answers) }.disabled(resolving)
+                    Button("Decline", role: .destructive) { resolve("reject") }.disabled(resolving)
+                } else {
+                    HStack {
+                        Button("Review & approve") { confirming = true }.buttonStyle(.borderedProminent)
+                        Button("Reject", role: .destructive) { resolve("reject") }.buttonStyle(.bordered)
+                    }.disabled(resolving)
+                }
             }
         }
         .confirmationDialog("Allow this tool call on your PC? Review its arguments before approving.", isPresented: $confirming, titleVisibility: .visible) {
@@ -97,13 +108,15 @@ struct ToolActivity: View {
             Button("Cancel", role: .cancel) {}
         }
     }
-    private func resolve(_ action: String) {
+    private func resolve(_ action: String, answers: [String: String]? = nil) {
         guard let api = store.api, let id = store.chatID, !callID.isEmpty else { return }
         resolving = true
         Task {
             defer { resolving = false }
             do {
-                _ = try await api.object("/api/v1/chats/\(id)/messages/\(message.id)/resolve", method: "POST", body: ["call_id": callID, "action": action])
+                var body: Object = ["call_id": callID, "action": action]
+                if let answers { body["answers"] = answers }
+                _ = try await api.object("/api/v1/chats/\(id)/messages/\(message.id)/resolve", method: "POST", body: body)
                 await store.reconnect()
             } catch { store.error = error.localizedDescription }
         }
@@ -113,6 +126,42 @@ struct ToolActivity: View {
         if let text = value as? String { return text }
         if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .fragmentsAllowed]), let text = String(data: data, encoding: .utf8) { return text }
         return String(describing: value)
+    }
+}
+
+struct UserQuestionForm: View {
+    let arguments: Any?
+    let submit: ([String: String]) -> Void
+    @State private var answers: [String: String] = [:]
+    private var questions: [Object] {
+        let object: Object?
+        if let text = arguments as? String, let data = text.data(using: .utf8) { object = (try? JSONSerialization.jsonObject(with: data)) as? Object }
+        else { object = arguments as? Object }
+        return object?["questions"] as? [Object] ?? []
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
+                let id = question["id"] as? String ?? "question"
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(question["question"] as? String ?? "Your input is needed").font(.subheadline.weight(.semibold))
+                    ForEach(Array((question["options"] as? [Object] ?? []).enumerated()), id: \.offset) { _, option in
+                        let label = option["label"] as? String ?? "Option"
+                        Button { answers[id] = label } label: {
+                            HStack {
+                                Image(systemName: answers[id] == label ? "checkmark.circle.fill" : "circle")
+                                VStack(alignment: .leading) { Text(label); Text(option["description"] as? String ?? "").font(.caption2).foregroundStyle(.secondary) }
+                            }
+                        }.buttonStyle(.bordered)
+                    }
+                    if question["allow_other"] as? Bool ?? true {
+                        TextField("Your answer", text: Binding(get: { answers[id] ?? "" }, set: { answers[id] = $0 })).textFieldStyle(.roundedBorder)
+                    }
+                }
+            }
+            Button("Send answers") { submit(answers) }.buttonStyle(.borderedProminent)
+                .disabled(questions.isEmpty || questions.contains { (answers[$0["id"] as? String ?? "question"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        }
     }
 }
 
@@ -136,20 +185,24 @@ struct NativeMarkdown: View {
         }.background(.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 12)).clipShape(RoundedRectangle(cornerRadius: 12))
     }
     private func prose(_ text: String) -> some View {
-        let regex = try? NSRegularExpression(pattern: "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)\\)")
+        let regex = try? NSRegularExpression(pattern: "!\\[([^\\]]*)\\]\\(([^\\s\\)]+)\\)|<(video|audio)[^>]*src=[\"']([^\"']+)[\"'][^>]*>(?:.*?)</(?:video|audio)>", options: [.dotMatchesLineSeparators, .caseInsensitive])
         let ns = text as NSString
         let matches = regex?.matches(in: text, range: NSRange(location: 0, length: ns.length)) ?? []
         var cursor = 0
         var pieces: [(String, String?)] = []
         for match in matches {
             if match.range.location > cursor { pieces.append((ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor)), nil)) }
-            pieces.append((ns.substring(with: match.range(at: 1)), ns.substring(with: match.range(at: 2))))
+            if match.range(at: 2).location != NSNotFound {
+                pieces.append((ns.substring(with: match.range(at: 1)), ns.substring(with: match.range(at: 2))))
+            } else {
+                pieces.append(("Generated " + ns.substring(with: match.range(at: 3)), ns.substring(with: match.range(at: 4))))
+            }
             cursor = NSMaxRange(match.range)
         }
         if cursor < ns.length { pieces.append((ns.substring(from: cursor), nil)) }
         return VStack(alignment: .leading, spacing: 12) {
             ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
-                if let source = piece.1 { RemoteAttachment(source: source, name: piece.0.isEmpty ? "Generated image" : piece.0, image: true) }
+                if let source = piece.1 { RemoteAttachment(source: source, name: piece.0.isEmpty ? "Generated image" : piece.0, image: !piece.0.hasPrefix("Generated video") && !piece.0.hasPrefix("Generated audio")) }
                 else { Text((try? AttributedString(markdown: piece.0, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(piece.0)).textSelection(.enabled).lineSpacing(4) }
             }
         }

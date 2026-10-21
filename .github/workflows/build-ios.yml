@@ -28,6 +28,6 @@ jobs:
         with:
           name: Native-verification
           path: |
-            build/NativeConnection.png
+            build/Native*.png
             build/TestResults.xcresult
           retention-days: 7

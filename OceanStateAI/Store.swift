@@ -260,7 +260,7 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
             let record = try await api.upload(data, name: name, mime: mime)
             guard let id = record["id"] as? String else { throw APIError(message: "The uploaded file has no ID.") }
             var remote: Object = ["id": id, "name": name, "type": "file", "file": record,
-                                  "url": api.base.absoluteString + "/api/v1/files/\(id)/content"]
+                                  "url": "/api/v1/files/\(id)/content"]
             if mime.hasPrefix("image/") { remote["type"] = "image"; remote["content_type"] = mime }
             attachments.append(Attachment(id: id, name: name, mime: mime, remote: remote))
         } catch { self.error = error.localizedDescription }

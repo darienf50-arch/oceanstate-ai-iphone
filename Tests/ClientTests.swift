@@ -41,4 +41,12 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual((content?.last?["image_url"] as? Object)?["url"] as? String, "https://example.com/photo.png")
         XCTAssertEqual(MessagePayload.content(text: "Plain", files: []) as? String, "Plain")
     }
+    func testPrivateUploadedPhotoUsesAuthenticatedRelativeHandle() {
+        let path = "/api/v1/files/123/content"
+        let content = MessagePayload.content(text: "Describe", files: [["type": "image", "url": path]]) as? [Object]
+        XCTAssertEqual((content?.last?["image_url"] as? Object)?["url"] as? String, path)
+        let api = OceanAPI(base: URL(string: "https://example.com")!)
+        XCTAssertEqual(api.resource(path)?.absoluteString, "https://example.com" + path)
+        XCTAssertNil(api.resource("http://example.com/image"))
+    }
 }

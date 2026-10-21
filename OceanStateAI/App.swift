@@ -8,7 +8,13 @@ struct OceanStateApp: App {
     var body: some Scene {
         WindowGroup {
             OceanRoot().environmentObject(store).tint(.cyan)
-                .preferredColorScheme(.dark).task { await store.restore() }
+                .preferredColorScheme(.dark).task {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--native-chat-preview") { store.loadVisualFixture(chat: true); return }
+                    if ProcessInfo.processInfo.arguments.contains("--native-welcome-preview") { store.loadVisualFixture(chat: false); return }
+                    #endif
+                    await store.restore()
+                }
         }
     }
 }

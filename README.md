@@ -1,28 +1,46 @@
-# Ocean State AI for iPhone
+# Ocean State AI — native iPhone client
 
-Native iOS 17+ app shell for your existing Ocean State AI WebUI. Supports iPhone 15 Pro Max. This uses WKWebView, so the server provides the chat interface, models, history and tools. It does not run the models on your phone. Cookies persist in the app's private WebKit data store.
+A SwiftUI iPhone workspace for a PC-hosted Ocean State AI installation. Version 2 replaces the original WKWebView wrapper. It contains no WebKit view, browser shell, or embedded WebUI pages. Existing backend APIs are reused to preserve models, conversations, files, tools and local voice services; this client still depends on those server APIs. Models continue running on the PC, not on the iPhone.
 
-## Current status
+## Implemented
 
-Source prepared on Windows; no IPA has been compiled, signed, installed or device-tested. Xcode and the iPhoneOS SDK are required on a Mac. Voice, downloads, file uploads and external authentication must be verified against your actual WebUI on a device; full WebUI feature parity is not yet verified. Native push notifications and background inference are not implemented.
+- Native chat with Markdown text, code blocks with copy, photo/generated-image previews, tool activity, attachment preview/share, message copy/share and server errors.
+- Model selection, selectable PC tools, search/image/code/memory controls, additional instructions and optional temperature.
+- Server-saved conversations, server search, paginated history, project folders and project conversations.
+- Edit/regenerate creates a branch while preserving previous replies. Native preferences are saved with the conversation.
+- Photos, native camera and document attachments (25 MB input limit). Documents use server processing; images use multimodal input.
+- Microphone recording and PC transcription, PC speech playback and turn-based voice conversation with interruption controls. This is not full-duplex realtime voice.
+- Backend task acknowledgements, progressive polling of saved output, stop, reconnect and resume after reopening a running chat. PC execution can continue while iOS suspends the client. Background UI updates and notifications are not implemented.
+- Tool approval/rejection and structured answers to the server's `ask_user` questions. Existing owner approval rules remain server-side; the agent cannot approve business actions on the owner's behalf.
+- HTTPS-only connection, native email/password sign-in, origin-bound tokens in iPhone Keychain, no saved password and no bearer token on external media URLs or cross-origin redirects.
 
-## Build an IPA for a signing tool
+## Remaining work
 
-Alternatively, place the contents of this folder at the root of a dedicated GitHub repository, including `.github/workflows/build-ios.yml`. In GitHub Actions, select **Build Ocean State AI IPA**, then **Run workflow**. It runs on a hosted Mac and uploads `OceanStateAI-unsigned` as a downloadable artifact. Extract the IPA and sign it with your chosen compatible sideloading tool. GitHub runner usage may consume your account's included minutes or incur charges; check the account's allowance before running. This workflow has been prepared but has not been run or verified on a hosted Mac.
+This is a native preview, not complete ChatGPT or WebUI feature parity. Dedicated PC filesystem/editor/terminal screens, agency/CRM and automation dashboards, memory management, interactive artifacts, realtime voice, live camera/screen sharing, push notifications, OAuth/MFA flows and offline AI remain to be implemented. Server tools can expose PC coding, media, business and scheduling capabilities through chat; workflow cards prepare prompts, not completed jobs. Browser-only tools requiring callbacks into a WebUI browser session are not supported.
 
-1. Copy this folder to a Mac with Xcode, launch Xcode once and complete its setup.
-2. Install XcodeGen (`brew install xcodegen`).
-3. Run `bash build-ipa.sh`.
-4. The result is `build/OceanStateAI-unsigned.ipa`. It is intentionally unsigned and cannot be installed directly. Use a compatible sideloading/signing tool and your own Apple account to sign and install it. The tool's account requirements and renewal rules apply.
+Image/video generation and research depend on server providers and model capabilities. Compiling an app and testing APIs does not establish generation quality or physical iPhone behavior. Do not claim those features were device-tested until acceptance checks have been completed.
 
-For direct installation using Xcode instead, generate the project with `xcodegen generate`, open `OceanStateAI.xcodeproj`, select your signing team and a unique bundle identifier, connect your phone and choose Run. Enable Developer Mode on the phone when required. A signed distribution IPA requires appropriate Apple provisioning and device registration; use Xcode's Archive and Distribute workflow.
+## Build and verification
 
-## Connect
+On a Mac with Xcode and XcodeGen (`brew install xcodegen`):
 
-Open the app, enter the HTTPS address of your existing WebUI and sign in normally. The address must work from your iPhone with a valid trusted certificate. `localhost` and `127.0.0.1` on the phone refer to the phone, not your PC. For access away from home, use your existing private network or an authenticated HTTPS endpoint. This project does not expose your PC or configure a tunnel. Plain HTTP addresses are currently rejected; if that is your only endpoint, connection setup needs to be completed before this app will be usable.
+```sh
+bash build-ipa.sh
+bash test-ios.sh
+```
 
-## Device acceptance checks
+The IPA is `build/OceanStateAI-unsigned.ipa`. It is not directly installable; sign it using your own compatible sideloading tool/account. Using the same signing identity and bundle identifier allows an in-place update. Free-account provisioning normally needs periodic renewal. Never put Apple passwords in chat, commits or workflow secrets.
 
-Verify login survives app relaunch; open an existing chat; stream a new reply; switch models; upload a photo and file; exercise voice with microphone permission; open generated images/videos and try saving them; test OAuth if used; disconnect and reconnect the network. Compare these behaviors with Safari against the same server. Treat any failed feature as remaining integration work.
+The manually triggered GitHub Actions workflow uses a standard `macos-latest` runner in this public repository. It builds an arm64 IPA, validates its ZIP, runs native client tests on an iPhone simulator and exports a screenshot and XCTest results. Standard hosted compute is free for public repositories; private repositories and other runner types have separate billing. No signing credentials, server data or model weights belong in this repository.
 
-Apple distribution reference: https://developer.apple.com/documentation/xcode/distributing-your-app-to-registered-devices
+## Connection and server integration
+
+Enter your PC's reachable HTTPS origin and sign in using your existing Ocean State account. A previous wrapper's saved address can be reused. The PC must be online. For a Tailscale-only server, connect Tailscale on the iPhone first. `localhost` refers to the iPhone, not the PC. This client creates no public network route.
+
+Native requests identify themselves as `OceanStateAI-iOS/2`. On the owner's installation, a narrowly scoped server filter update respects native preferences while retaining previous WebUI defaults. This is a preference signal, not authentication; normal server authorization applies. Other installations that force features/tools on need equivalent preference handling for the controls to be authoritative.
+
+APIs used: `/api/v1/auths/signin`, `/api/models`, `/api/v1/tools/`, `/api/v1/chats/`, `/api/chat/completions`, `/api/tasks/chat/{id}/stop`, `/api/v1/files/`, `/api/v1/folders/`, `/api/v1/audio/transcriptions`, `/api/v1/audio/speech` and per-message tool-call resolution. Generation is acknowledged as a backend task and observed through saved chat output. The client never automatically resends an uncertain request after a timeout.
+
+## Physical iPhone acceptance checks
+
+Sign in and relaunch; open history; change models; send a new chat and follow-up; edit/regenerate and confirm branch preservation; attach a document, library photo and camera image; verify image understanding; record a voice message; test read-aloud and turn-based voice; enable a read-only PC tool and inspect its result; exercise a question and approval; stop a task; lock/unlock and reconnect; inspect generated images/video; verify project context and sharing. Test network loss after send without blindly retrying. Keep WebUI available separately for unsupported workflows.
