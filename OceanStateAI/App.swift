@@ -213,20 +213,44 @@ struct HistoryView: View {
     @EnvironmentObject var store: OceanStore
     @Environment(\.dismiss) var dismiss
     @State private var search = ""
+    @State private var results: [ChatSummary] = []
+    @State private var createProject = false
+    @State private var projectName = ""
     var body: some View {
         NavigationStack {
             List {
                 Button("New conversation", systemImage: "square.and.pencil") { store.newConversation(); dismiss() }
-                ForEach(store.chats.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { chat in
+                if search.isEmpty {
+                    Section("Projects") {
+                        ForEach(store.projects) { project in NavigationLink { ProjectView(project: project, closeHistory: { dismiss() }) } label: { Label(project.name, systemImage: "folder") } }
+                        Button("New project", systemImage: "folder.badge.plus") { createProject = true }
+                    }
+                }
+                ForEach(search.isEmpty ? store.chats : results) { chat in
                     Button { Task { await store.open(chat.id) }; dismiss() } label: {
                         HStack { Image(systemName: "bubble.left").foregroundStyle(.secondary); Text(chat.title).foregroundStyle(.primary).lineLimit(2); Spacer(); if chat.id == store.chatID { Image(systemName: "checkmark").foregroundStyle(.cyan) } }.padding(.vertical, 6)
                     }
                 }
                 if store.hasMoreChats { Button("Load more conversations") { Task { do { try await store.loadChats() } catch { store.error = error.localizedDescription } } } }
             }
-            .searchable(text: $search, prompt: "Search loaded conversations")
+            .searchable(text: $search, prompt: "Search all conversations")
             .navigationTitle("Conversations").toolbar { Button("Done") { dismiss() } }
             .refreshable { do { try await store.loadChats(reset: true) } catch { store.error = error.localizedDescription } }
+            .task(id: search) {
+                guard !search.isEmpty else { results = []; return }
+                do {
+                    try await Task.sleep(for: .milliseconds(350))
+                    var components = URLComponents(); components.queryItems = [URLQueryItem(name: "text", value: search), URLQueryItem(name: "page", value: "1")]
+                    let list = try await store.api?.json("/api/v1/chats/search" + (components.string ?? "")) as? [Object] ?? []
+                    try Task.checkCancellation()
+                    results = list.compactMap { item in guard let id = item["id"] as? String else { return nil }; return ChatSummary(id: id, title: item["title"] as? String ?? "Conversation") }
+                } catch is CancellationError {} catch { store.error = error.localizedDescription }
+            }
+            .alert("New project", isPresented: $createProject) {
+                TextField("Project name", text: $projectName)
+                Button("Create") { let name = projectName.trimmingCharacters(in: .whitespacesAndNewlines); guard !name.isEmpty else { return }; Task { do { try await store.createProject(name); projectName = "" } catch { store.error = error.localizedDescription } } }
+                Button("Cancel", role: .cancel) {}
+            }
         }
     }
 }

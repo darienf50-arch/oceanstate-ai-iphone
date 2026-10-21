@@ -15,6 +15,10 @@ struct ChatSummary: Identifiable {
     let id: String
     let title: String
 }
+struct ProjectSummary: Identifiable {
+    let id: String
+    let name: String
+}
 struct Attachment: Identifiable {
     let id: String
     let name: String

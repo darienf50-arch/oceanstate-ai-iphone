@@ -14,6 +14,8 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
     @Published var models: [ServerModel] = []
     @Published var tools: [ServerTool] = []
     @Published var chats: [ChatSummary] = []
+    @Published var projects: [ProjectSummary] = []
+    @Published var folderID: String?
     @Published var messages: [ChatMessage] = []
     @Published var attachments: [Attachment] = []
     @Published var draft = ""
@@ -92,6 +94,13 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
             }
         } catch { notice = "Tools could not be loaded: \(error.localizedDescription)" }
         try await loadChats(reset: true)
+        do {
+            let list = try await api.json("/api/v1/folders/") as? [Object] ?? []
+            projects = list.compactMap {
+                guard let id = $0["id"] as? String else { return nil }
+                return ProjectSummary(id: id, name: $0["name"] as? String ?? "Project")
+            }
+        } catch { notice = "Projects could not be loaded: \(error.localizedDescription)" }
     }
     func loadChats(reset: Bool = false) async throws {
         guard let api else { return }
@@ -106,7 +115,7 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
     }
     func clearConversation() {
         monitor?.cancel(); monitor = nil; messages = []; chatID = nil; title = "New conversation"
-        attachments = []; draft = ""; activeReplyID = nil; lastChat = [:]; sending = false; error = nil
+        attachments = []; draft = ""; activeReplyID = nil; lastChat = [:]; sending = false; error = nil; folderID = nil
     }
     func newConversation() {
         guard !requestPending, !uploading, !recording else { return }
@@ -116,25 +125,36 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
     func open(_ id: String) async {
         guard !requestPending, !uploading, !recording else { return }
         clearConversation(); chatID = id; busy = true; defer { busy = false }
-        do { try await refreshChat(id); if sending { startMonitoring(id) } }
+        do { try await refreshChat(id, applyPreferences: true); if sending { startMonitoring(id) } }
         catch { self.error = error.localizedDescription }
     }
-    func refreshChat(_ id: String) async throws {
+    func refreshChat(_ id: String, applyPreferences: Bool = false) async throws {
         guard let api else { return }
         let response = try await api.object("/api/v1/chats/\(id)")
         guard chatID == id else { return }
         let chat = response["chat"] as? Object ?? [:]
         lastChat = chat; title = chat["title"] as? String ?? response["title"] as? String ?? "Conversation"
         messages = ChatBranch.messages(chat)
-        if let model = (chat["models"] as? [String])?.first, models.contains(where: { $0.id == model }) { selectedModel = model }
-        if let ids = chat["tool_ids"] as? [String] { selectedTools = Set(ids).intersection(Set(tools.map(\.id))) }
+        if applyPreferences {
+            let prefs = chat["native_preferences"] as? Object ?? [:]
+            if let model = prefs["model"] as? String ?? messages.last?.raw["model"] as? String ?? (chat["models"] as? [String])?.first, models.contains(where: { $0.id == model }) { selectedModel = model }
+            if let ids = prefs["tool_ids"] as? [String] ?? chat["tool_ids"] as? [String] { selectedTools = Set(ids).intersection(Set(tools.map(\.id))) }
+            if let features = prefs["features"] as? [String: Bool] {
+                webSearch = features["web_search"] ?? true; imageGeneration = features["image_generation"] ?? true
+                codeInterpreter = features["code_interpreter"] ?? true; memory = features["memory"] ?? true
+            }
+            systemPrompt = prefs["system_prompt"] as? String ?? ""
+            useTemperature = prefs["use_temperature"] as? Bool ?? false
+            temperature = prefs["temperature"] as? Double ?? 0.7
+            folderID = response["folder_id"] as? String
+        }
         sending = messages.last.map { $0.role == "assistant" && !$0.done } ?? false
         if sending { activeReplyID = messages.last?.id }
     }
     func send(parent: String? = nil, replacement: String? = nil, reusedFiles: [Object]? = nil) async {
         guard let api, connected, !sending, !requestPending, !uploading, !selectedModel.isEmpty else { return }
         let text = (replacement ?? draft).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || !attachments.isEmpty else { return }
+        guard !text.isEmpty || !attachments.isEmpty || !(reusedFiles?.isEmpty ?? true) else { return }
         requestPending = true; sending = true; error = nil
         let files = reusedFiles ?? attachments.map(\.remote)
         let userID = UUID().uuidString.lowercased(), replyID = UUID().uuidString.lowercased()
@@ -161,12 +181,18 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
                             "tool_ids": Array(selectedTools), "files": files, "params": params,
                             "features": ["web_search": webSearch, "image_generation": imageGeneration, "code_interpreter": codeInterpreter, "memory": memory]]
         if let chatID { body["chat_id"] = chatID }
+        if let folderID { body["folder_id"] = folderID }
+        let preferences: Object = ["model": selectedModel, "tool_ids": Array(selectedTools),
+                                  "features": body["features"] ?? [:], "system_prompt": systemPrompt,
+                                  "use_temperature": useTemperature, "temperature": temperature]
         messages = context + [.parse(user), .parse(placeholder)]
         activeReplyID = replyID
         do {
             let result = try await api.object("/api/chat/completions", method: "POST", body: body)
             guard let id = result["chat_id"] as? String else { throw APIError(message: "Server did not acknowledge a saved task. Do not resend until you check History.") }
             chatID = id; draft = ""; attachments = []; requestPending = false
+            do { _ = try await api.object("/api/v1/chats/\(id)", method: "POST", body: ["chat": ["native_preferences": preferences]]) }
+            catch { notice = "Reply started, but conversation preferences could not be saved." }
             try await refreshChat(id); startMonitoring(id)
             try? await loadChats(reset: true)
         } catch {
@@ -288,6 +314,12 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
         } catch { self.error = error.localizedDescription }
     }
     func stopAudio() { player?.stop(); playing = false }
+    func createProject(_ name: String) async throws {
+        guard let api else { return }
+        _ = try await api.object("/api/v1/folders/", method: "POST", body: ["name": name])
+        let list = try await api.json("/api/v1/folders/") as? [Object] ?? []
+        projects = list.compactMap { item in guard let id = item["id"] as? String else { return nil }; return ProjectSummary(id: id, name: item["name"] as? String ?? "Project") }
+    }
     func endVoiceConversation() {
         voiceConversation = false; stopAudio(); recorder?.stop(); recording = false
         if let url = recordingURL { try? FileManager.default.removeItem(at: url) }
@@ -308,6 +340,6 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
     func signOut() {
         guard !sending, !requestPending else { error = "Stop the current task or open a new conversation before signing out."; return }
         if let api { try? TokenVault.save(nil, server: api.base) }
-        clearConversation(); connected = false; api = nil; chats = []; tools = []; models = []
+        endVoiceConversation(); clearConversation(); connected = false; api = nil; chats = []; tools = []; models = []; projects = []; toolsInitialized = false
     }
 }
