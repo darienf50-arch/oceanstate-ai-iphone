@@ -23,3 +23,4 @@ for filename, argument in [('NativeConnection.png',None),('NativeWelcome.png','-
     call('xcrun','simctl','io',device,'screenshot','build/'+filename)
     call('xcrun','simctl','terminate',device,'com.oceanstateai.iphone')
 PY
+swift verify-layout.swift build/NativeWelcome.png build/NativeChat.png

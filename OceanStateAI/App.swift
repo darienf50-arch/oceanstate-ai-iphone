@@ -83,6 +83,7 @@ struct OceanRoot: View {
     }
 
     private var conversation: some View {
+        GeometryReader { bounds in
         VStack(spacing: 0) {
             HStack {
                 Menu {
@@ -99,8 +100,12 @@ struct OceanRoot: View {
                 HStack { Text(notice).font(.caption); Spacer(); Button { store.notice = nil } label: { Image(systemName: "xmark") } }
                     .padding(10).background(.cyan.opacity(0.09))
             }
-            if store.messages.isEmpty { welcome } else { transcript }
-        }.safeAreaInset(edge: .bottom, spacing: 0) { composer }
+            Group {
+                if store.messages.isEmpty { welcome } else { transcript }
+            }.frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+            composer.fixedSize(horizontal: false, vertical: true)
+        }.frame(width: bounds.size.width, height: bounds.size.height, alignment: .top)
+        }
     }
     private var welcome: some View {
         ScrollView {
@@ -160,7 +165,7 @@ struct OceanRoot: View {
                                 .font(.caption).padding(10).background(.white.opacity(0.08), in: Capsule())
                         }
                     }
-                }
+                }.frame(height: 44)
             }
             if store.uploading { HStack { ProgressView(); Text("Uploading and processing attachment…").font(.caption) } }
             if store.recording { Label("Recording · tap microphone to transcribe", systemImage: "waveform").font(.caption).foregroundStyle(.red) }
