@@ -5,7 +5,7 @@ A SwiftUI iPhone workspace for a PC-hosted Ocean State AI installation. Version 
 ## Implemented
 
 - Native chat with Markdown text, code blocks with copy, photo/generated-image previews, tool activity, attachment preview/share, message copy/share and server errors.
-- Model selection, selectable PC tools, search/image/code/memory controls, additional instructions and optional temperature.
+- Model selection, selectable PC tools, search/image/memory controls, additional instructions and optional temperature. Code executes through PC tools; the server's browser-based Pyodide interpreter is disabled in native requests.
 - Server-saved conversations, server search, paginated history, project folders and project conversations.
 - Edit/regenerate creates a branch while preserving previous replies. Native preferences are saved with the conversation.
 - Photos, native camera and document attachments (25 MB input limit). Documents use server processing; images use multimodal input.

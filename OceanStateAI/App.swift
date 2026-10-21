@@ -302,7 +302,7 @@ struct ControlsView: View {
                 Section {
                     Toggle("Web search", isOn: $store.webSearch)
                     Toggle("Image generation", isOn: $store.imageGeneration)
-                    Toggle("Code interpreter", isOn: $store.codeInterpreter)
+                    Label("Code execution uses your selected PC tools", systemImage: "chevron.left.forwardslash.chevron.right").font(.caption).foregroundStyle(.secondary)
                     Toggle("Server memory", isOn: $store.memory)
                 } header: { Text("Server features") } footer: { Text("These use the features enabled on your server and supported by the selected model. PC coding, video, agency and workspace tools can be selected below.") }
                 Section {

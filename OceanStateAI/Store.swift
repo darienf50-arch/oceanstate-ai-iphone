@@ -25,7 +25,7 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
     @Published var selectedTools = Set<String>()
     @Published var webSearch = true
     @Published var imageGeneration = true
-    @Published var codeInterpreter = true
+    @Published var codeInterpreter = false
     @Published var memory = true
     @Published var systemPrompt = ""
     @Published var temperature = 0.7
@@ -141,7 +141,7 @@ final class OceanStore: NSObject, ObservableObject, AVAudioPlayerDelegate, AVAud
             if let ids = prefs["tool_ids"] as? [String] ?? chat["tool_ids"] as? [String] { selectedTools = Set(ids).intersection(Set(tools.map(\.id))) }
             if let features = prefs["features"] as? [String: Bool] {
                 webSearch = features["web_search"] ?? true; imageGeneration = features["image_generation"] ?? true
-                codeInterpreter = features["code_interpreter"] ?? true; memory = features["memory"] ?? true
+                codeInterpreter = false; memory = features["memory"] ?? true
             }
             systemPrompt = prefs["system_prompt"] as? String ?? ""
             useTemperature = prefs["use_temperature"] as? Bool ?? false

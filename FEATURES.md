@@ -11,6 +11,7 @@ Version 2 is a native preview. No physical iPhone acceptance test has been compl
 | Edit/regenerate branches | Yes | Live test preserved alternate replies and selected the new branch |
 | Stop and reconnect | Yes | Live stop endpoint terminated a task; reconnect reads saved server state |
 | PC tool execution and visible results | Yes | Read-only `project_preview` call executed and its output was persisted |
+| Code execution | Through PC tools | Browser-based Pyodide is disabled in native requests because it requires a WebUI browser callback |
 | Tool approval/rejection | Yes | Native per-call review UI and inspected server resolution schema; approval/rejection needs end-to-end iPhone testing |
 | Structured questions | Yes | Live answer submission persisted and model continuation completed |
 | Document attachment | Yes | Live upload and processing passed; native file picker needs device testing |
