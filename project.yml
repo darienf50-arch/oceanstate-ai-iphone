@@ -17,8 +17,8 @@ targets:
       path: OceanStateAI/Info.plist
       properties:
         CFBundleDisplayName: Ocean State AI
-        CFBundleShortVersionString: '1.0'
-        CFBundleVersion: '2'
+        CFBundleShortVersionString: '2.0'
+        CFBundleVersion: '3'
         UILaunchScreen: {}
         NSCameraUsageDescription: Attach photos and use video in Ocean State AI.
         NSMicrophoneUsageDescription: Use voice conversations in Ocean State AI.
@@ -31,6 +31,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.oceanstateai.iphone
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  OceanStateTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: OceanStateAI
 schemes:
   OceanStateAI:
     build:
@@ -38,3 +47,5 @@ schemes:
         OceanStateAI: all
     archive:
       config: Release
+    test:
+      targets: [OceanStateTests]

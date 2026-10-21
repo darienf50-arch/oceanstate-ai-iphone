@@ -1,108 +1,299 @@
 import SwiftUI
-import WebKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 @main
 struct OceanStateApp: App {
-    var body: some Scene { WindowGroup { OceanStateView() } }
+    @StateObject private var store = OceanStore()
+    var body: some Scene {
+        WindowGroup {
+            OceanRoot().environmentObject(store).tint(.cyan)
+                .preferredColorScheme(.dark).task { await store.restore() }
+        }
+    }
 }
 
-struct OceanStateView: View {
-    @AppStorage("serverURL") private var server = ""
-    @State private var editing = false
-    @State private var draft = ""
-    @State private var generation = UUID()
-
-    private var validURL: URL? { Self.validate(server) }
-    static func validate(_ value: String) -> URL? {
-        guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.scheme?.lowercased() == "https", let host = url.host, !host.isEmpty,
-              url.user == nil, url.password == nil else { return nil }
-        return url
-    }
+struct OceanRoot: View {
+    @EnvironmentObject var store: OceanStore
+    @Environment(\.scenePhase) var scenePhase
+    @State private var showSettings = false
+    @State private var showHistory = false
+    @State private var showControls = false
+    @State private var showStudio = false
+    @State private var importFile = false
+    @State private var photo: PhotosPickerItem?
+    private let background = Color(red: 0.035, green: 0.055, blue: 0.085)
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Ocean State AI").font(.headline)
-                Spacer()
-                Button { generation = UUID() } label: { Image(systemName: "arrow.clockwise") }
-                    .accessibilityLabel("Reconnect")
-                Button { draft = server; editing = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Server settings")
-            }.padding().background(.bar)
-            if let url = validURL {
-                WebPanel(url: url).id(generation)
-            } else {
-                ContentUnavailableView {
-                    Label("Your Ocean State AI", systemImage: "water.waves")
-                } description: {
-                    Text("Connect to your existing WebUI with its HTTPS address. Your AI continues running on your server.")
-                } actions: {
-                    Button("Connect server") { draft = server; editing = true }.buttonStyle(.borderedProminent)
+        NavigationStack {
+            Group {
+                if store.connected { conversation } else { ConnectionView() }
+            }
+            .background(background)
+            .navigationTitle(store.connected ? "Ocean State AI" : "")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if store.connected {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { showHistory = true } label: { Image(systemName: "sidebar.left") }.accessibilityLabel("Conversation history")
+                    }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button { store.newConversation() } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New conversation")
+                        Button { showSettings = true } label: { Image(systemName: "gearshape") }.accessibilityLabel("Settings")
+                    }
                 }
             }
         }
-        .sheet(isPresented: $editing) {
-            NavigationStack {
-                Form {
-                    Section("WebUI address") {
-                        TextField("https://your-ocean-state-server", text: $draft)
-                            .keyboardType(.URL).textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Text("Use an HTTPS address reachable from your iPhone. Sign in through your normal WebUI login. Do not put passwords or API keys in this address.").font(.footnote)
-                    }
-                    Button("Save and connect") {
-                        server = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        generation = UUID(); editing = false
-                    }.disabled(Self.validate(draft) == nil)
-                }
-                .navigationTitle("Connection")
-                .toolbar { Button("Cancel") { editing = false } }
+        .sheet(isPresented: $showSettings) { NavigationStack { SettingsView() } }
+        .sheet(isPresented: $showHistory) { HistoryView() }
+        .sheet(isPresented: $showControls) { ControlsView() }
+        .sheet(isPresented: $showStudio) { StudioView() }
+        .fileImporter(isPresented: $importFile, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls): if let url = urls.first { Task { await store.importFile(url) } }
+            case .failure(let error): store.error = error.localizedDescription
             }
+        }
+        .onChange(of: photo) { _, selected in
+            guard let selected else { return }
+            Task {
+                do {
+                    if let data = try await selected.loadTransferable(type: Data.self) {
+                        let type = selected.supportedContentTypes.first ?? .jpeg
+                        await store.attach(data: data, name: "Photo.\(type.preferredFilenameExtension ?? "jpg")", mime: type.preferredMIMEType ?? "image/jpeg")
+                    }
+                } catch { store.error = error.localizedDescription }
+                photo = nil
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await store.reconnect() } } }
+        .alert("Ocean State AI", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
+            Button("OK") { store.error = nil }
+        } message: { Text(store.error ?? "") }
+    }
+
+    private var conversation: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Menu {
+                    ForEach(store.models) { model in Button(model.name) { store.selectedModel = model.id } }
+                } label: {
+                    HStack(spacing: 5) { Text(store.modelName).font(.subheadline.weight(.semibold)).lineLimit(1); Image(systemName: "chevron.down").font(.caption2) }
+                }.disabled(store.sending)
+                Spacer()
+                Button { showControls = true } label: {
+                    Label(store.selectedTools.isEmpty ? "Controls" : "\(store.selectedTools.count) tools", systemImage: "slider.horizontal.3").font(.caption)
+                }
+            }.padding(.horizontal).padding(.vertical, 10)
+            if let notice = store.notice {
+                HStack { Text(notice).font(.caption); Spacer(); Button { store.notice = nil } label: { Image(systemName: "xmark") } }
+                    .padding(10).background(.cyan.opacity(0.09))
+            }
+            if store.messages.isEmpty { welcome } else { transcript }
+            composer
+        }
+    }
+    private var welcome: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Spacer(minLength: 55)
+                Image(systemName: "water.waves").font(.system(size: 48, weight: .light)).foregroundStyle(.cyan)
+                Text("What are we\nbuilding today?").font(.system(size: 35, weight: .semibold, design: .rounded))
+                Text("Your models. Your PC. Your workspace.").foregroundStyle(.secondary)
+                VStack(spacing: 10) {
+                    starter("Build something", detail: "Code, troubleshoot, and work on projects", icon: "chevron.left.forwardslash.chevron.right", prompt: "Help me build a new project. First ask what I want to create and inspect the available workspace tools.")
+                    starter("Create an image or video", detail: "Use the creative tools on your PC", icon: "sparkles.rectangle.stack", prompt: "Help me create an image or video using my installed creative tools. Ask what I want to make and check the available tools first.")
+                    starter("Research a topic", detail: "Explore, compare, and explain", icon: "globe", prompt: "Help me research a topic. Ask what I want to investigate, then use available sources and cite them.")
+                }
+                Button("Explore workflows") { showStudio = true }.font(.subheadline)
+            }.frame(maxWidth: 680, alignment: .leading).padding(24)
+        }
+    }
+    private func starter(_ title: String, detail: String, icon: String, prompt: String) -> some View {
+        Button { store.draft = prompt } label: {
+            HStack(spacing: 14) {
+                Image(systemName: icon).font(.title3).frame(width: 28).foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline.weight(.semibold)); Text(detail).font(.caption).foregroundStyle(.secondary) }
+                Spacer(); Image(systemName: "arrow.up.left").font(.caption).foregroundStyle(.secondary)
+            }.padding(16).background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18)).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 28) {
+                    Text(store.title).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 10)
+                    ForEach(store.messages) { message in MessageView(message: message) }
+                    if store.sending {
+                        HStack { ProgressView().controlSize(.small); Text("Working on your PC…").font(.caption).foregroundStyle(.secondary) }
+                    }
+                    Color.clear.frame(height: 1).id("bottom")
+                }.frame(maxWidth: 720).padding(.horizontal, 18).padding(.bottom, 18).frame(maxWidth: .infinity)
+            }
+            .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: store.messages.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+        }
+    }
+    private var composer: some View {
+        VStack(spacing: 8) {
+            if !store.attachments.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack {
+                        ForEach(store.attachments) { file in
+                            HStack { Image(systemName: file.isImage ? "photo" : "doc"); Text(file.name).lineLimit(1); Button { store.attachments.removeAll { $0.id == file.id } } label: { Image(systemName: "xmark.circle.fill") } }
+                                .font(.caption).padding(10).background(.white.opacity(0.08), in: Capsule())
+                        }
+                    }
+                }
+            }
+            if store.uploading { HStack { ProgressView(); Text("Uploading and processing attachment…").font(.caption) } }
+            if store.recording { Label("Recording · tap microphone to transcribe", systemImage: "waveform").font(.caption).foregroundStyle(.red) }
+            HStack(alignment: .bottom, spacing: 12) {
+                Menu {
+                    Button("Attach file", systemImage: "doc.badge.plus") { importFile = true }
+                    Button("Workflow starters", systemImage: "sparkles") { showStudio = true }
+                    Button("Tools and controls", systemImage: "slider.horizontal.3") { showControls = true }
+                } label: { Image(systemName: "plus").font(.title3).frame(height: 36) }.disabled(store.sending || store.uploading)
+                PhotosPicker(selection: $photo, matching: .images) { Image(systemName: "photo").frame(height: 36) }
+                    .disabled(store.sending || store.uploading).accessibilityLabel("Attach photo")
+                TextField("Message Ocean State AI", text: $store.draft, axis: .vertical).lineLimit(1...7).padding(.vertical, 8)
+                Button { Task { await store.toggleRecording() } } label: {
+                    Image(systemName: store.recording ? "stop.circle.fill" : "mic").foregroundStyle(store.recording ? .red : .secondary).frame(height: 36)
+                }.disabled(store.busy || store.sending).accessibilityLabel(store.recording ? "Stop recording" : "Record voice message")
+                if store.sending {
+                    Button { Task { await store.stop() } } label: { Image(systemName: "stop.fill").padding(10).background(.white, in: Circle()).foregroundStyle(.black) }.accessibilityLabel("Stop task")
+                } else {
+                    Button { Task { await store.send() } } label: { Image(systemName: "arrow.up").fontWeight(.bold).padding(10).background(.cyan, in: Circle()).foregroundStyle(.black) }
+                        .disabled(store.uploading || store.recording || store.busy || (store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.attachments.isEmpty)).accessibilityLabel("Send message")
+                }
+            }.padding(12).background(.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 25))
+            Text("Connected to your PC · Responses can make mistakes").font(.system(size: 10)).foregroundStyle(.tertiary)
+        }.padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 5).background(background)
+    }
+}
+
+struct ConnectionView: View {
+    @EnvironmentObject var store: OceanStore
+    @State private var server = ""
+    @State private var email = ""
+    @State private var password = ""
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Spacer(minLength: 35)
+                Image(systemName: "water.waves").font(.system(size: 52)).foregroundStyle(.cyan)
+                Text("Your AI.\nWithin reach.").font(.system(size: 40, weight: .semibold, design: .rounded))
+                Text("A native workspace connected to Ocean State AI on your PC.").foregroundStyle(.secondary)
+                VStack(spacing: 15) {
+                    TextField("HTTPS server address", text: $server).keyboardType(.URL).textContentType(.URL)
+                    Divider()
+                    TextField("Account email", text: $email).keyboardType(.emailAddress).textContentType(.username)
+                    Divider()
+                    SecureField("Password", text: $password).textContentType(.password)
+                }.textInputAutocapitalization(.never).autocorrectionDisabled().padding(20).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 20))
+                Button {
+                    Task { await store.signIn(server: server, email: email, password: password); password = "" }
+                } label: {
+                    HStack { Spacer(); if store.busy { ProgressView() } else { Text("Connect to Ocean State AI").fontWeight(.semibold) }; Spacer() }.padding(8)
+                }.buttonStyle(.borderedProminent).disabled(store.busy || email.isEmpty || password.isEmpty || ServerAddress.parse(server) == nil)
+                Text("Use your existing Ocean State AI account. Keep Tailscale connected when accessing your private server. Your password is used to sign in; only the session token is stored in this iPhone’s Keychain.").font(.footnote).foregroundStyle(.secondary)
+            }.frame(maxWidth: 520).padding(26).frame(maxWidth: .infinity)
+        }.onAppear { server = store.serverText }
+    }
+}
+
+struct HistoryView: View {
+    @EnvironmentObject var store: OceanStore
+    @Environment(\.dismiss) var dismiss
+    @State private var search = ""
+    var body: some View {
+        NavigationStack {
+            List {
+                Button("New conversation", systemImage: "square.and.pencil") { store.newConversation(); dismiss() }
+                ForEach(store.chats.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { chat in
+                    Button { Task { await store.open(chat.id) }; dismiss() } label: {
+                        HStack { Image(systemName: "bubble.left").foregroundStyle(.secondary); Text(chat.title).foregroundStyle(.primary).lineLimit(2); Spacer(); if chat.id == store.chatID { Image(systemName: "checkmark").foregroundStyle(.cyan) } }.padding(.vertical, 6)
+                    }
+                }
+                if store.hasMoreChats { Button("Load more conversations") { Task { do { try await store.loadChats() } catch { store.error = error.localizedDescription } } } }
+            }
+            .searchable(text: $search, prompt: "Search loaded conversations")
+            .navigationTitle("Conversations").toolbar { Button("Done") { dismiss() } }
+            .refreshable { do { try await store.loadChats(reset: true) } catch { store.error = error.localizedDescription } }
         }
     }
 }
 
-struct WebPanel: UIViewRepresentable {
-    let url: URL
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        configuration.allowsInlineMediaPlayback = true
-        let web = WKWebView(frame: .zero, configuration: configuration)
-        web.navigationDelegate = context.coordinator
-        web.uiDelegate = context.coordinator
-        web.allowsBackForwardNavigationGestures = true
-        web.load(URLRequest(url: url))
-        return web
+struct ControlsView: View {
+    @EnvironmentObject var store: OceanStore
+    @Environment(\.dismiss) var dismiss
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Model") { Picker("Model", selection: $store.selectedModel) { ForEach(store.models) { Text($0.name).tag($0.id) } } }
+                Section {
+                    Toggle("Web search", isOn: $store.webSearch)
+                    Toggle("Image generation", isOn: $store.imageGeneration)
+                    Toggle("Code interpreter", isOn: $store.codeInterpreter)
+                } header: { Text("Server features") } footer: { Text("These use the features enabled on your server and supported by the selected model. PC coding, video, agency and workspace tools can be selected below.") }
+                Section {
+                    ForEach(store.tools) { tool in
+                        Toggle(isOn: Binding(get: { store.selectedTools.contains(tool.id) }, set: { if $0 { store.selectedTools.insert(tool.id) } else { store.selectedTools.remove(tool.id) } })) {
+                            VStack(alignment: .leading, spacing: 4) { Text(tool.name); if !tool.detail.isEmpty { Text(tool.detail).font(.caption).foregroundStyle(.secondary).lineLimit(3) } }
+                        }
+                    }
+                    if store.tools.isEmpty { Text("No selectable tools loaded. Refresh the connection in Settings.").foregroundStyle(.secondary) }
+                } header: { Text("PC tools") } footer: { Text("Selected tools allow the model to act on your PC using your existing server permissions. Review the tool activity in each reply. Existing server approval rules still apply.") }
+                Section("Response preferences") {
+                    TextField("Additional instructions", text: $store.systemPrompt, axis: .vertical).lineLimit(3...8)
+                    Toggle("Custom temperature", isOn: $store.useTemperature)
+                    if store.useTemperature { Slider(value: $store.temperature, in: 0...2, step: 0.1); Text("Temperature \(store.temperature, specifier: "%.1f")").font(.caption) }
+                }
+            }.disabled(store.sending).navigationTitle("Tools & controls").toolbar { Button("Done") { dismiss() } }
+        }
     }
-    func updateUIView(_ view: WKWebView, context: Context) {}
+}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
-        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
-                     for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if navigationAction.targetFrame == nil, let url = navigationAction.request.url {
-                if url.scheme == "https" { webView.load(navigationAction.request) }
+struct SettingsView: View {
+    @EnvironmentObject var store: OceanStore
+    @Environment(\.dismiss) var dismiss
+    var body: some View {
+        Form {
+            Section("Connection") {
+                LabeledContent("Server", value: store.api?.base.host ?? "Disconnected")
+                Button("Refresh models, tools and history") { Task { do { try await store.loadCatalog(); store.notice = "Connection refreshed." } catch { store.error = error.localizedDescription } } }
+                Button("Reconnect to current task") { Task { await store.reconnect() }; dismiss() }
             }
-            return nil
-        }
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            guard (error as NSError).code != NSURLErrorCancelled else { return }
-            showError(webView)
-        }
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            guard (error as NSError).code != NSURLErrorCancelled else { return }
-            showError(webView)
-        }
-        private func showError(_ webView: WKWebView) {
-            webView.loadHTMLString("""
-            <html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-            <body style="font:18px -apple-system;padding:28px"><h2>Cannot connect</h2>
-            <p>Check that your Ocean State AI server is running and reachable from this iPhone.
-            If you use a private network, connect to it first.</p>
-            <p>Use the reconnect button to retry, or update the address in Settings.</p></body></html>
-            """, baseURL: nil)
+            Section("Audio") { if store.playing { Button("Stop read-aloud") { store.stopAudio() } }; Text("Voice recordings are transcribed on your PC. Read-aloud uses its configured voice service.").font(.footnote) }
+            Section("About") {
+                LabeledContent("Version", value: "2.0 · Native preview")
+                Text("Native SwiftUI interface. Chat, models, tools, attachments and voice connect directly to your existing server APIs. No WebUI pages are embedded.").font(.footnote)
+                Text("Realtime voice calls, push notifications, live camera/screen sharing, offline AI, dedicated project/agency dashboards and full feature parity are not yet implemented.").font(.footnote).foregroundStyle(.secondary)
+            }
+            Section { Button("Sign out", role: .destructive) { store.signOut(); if !store.connected { dismiss() } } }
+        }.navigationTitle("Settings").toolbar { Button("Done") { dismiss() } }
+    }
+}
+
+struct StudioView: View {
+    @EnvironmentObject var store: OceanStore
+    @Environment(\.dismiss) var dismiss
+    private let workflows: [(String, String, String)] = [
+        ("Image studio", "photo.artframe", "Use my installed image tools to create an image. Ask for the subject, style and dimensions first."),
+        ("Video studio", "film", "Use my installed video tools. Ask whether I want text-to-video, image-to-video or editing, then inspect available engines and settings."),
+        ("Coding workspace", "laptopcomputer", "Help me develop a project on my PC. Inspect the workspace tools, confirm the project path, and ask for the requirements before changing files."),
+        ("Research", "globe", "Research a topic with available search tools, cite sources and distinguish verified facts from assumptions. Ask me for the topic."),
+        ("Business agency", "building.2", "Help me with my existing Ocean State agency. Start by reviewing available agency tools and status. Preserve owner approval requirements for external actions."),
+        ("Automations", "clock.arrow.circlepath", "Help me set up an automation using my installed scheduling tools. Ask what should happen and when before creating it.")]
+    var body: some View {
+        NavigationStack {
+            List {
+                Section { Text("These prepare a conversation with your PC’s AI. Enable the relevant PC tools in Controls, review the prompt, then send it.").font(.footnote).foregroundStyle(.secondary) }
+                ForEach(workflows, id: \.0) { item in
+                    Button { store.draft = item.2; dismiss() } label: { Label(item.0, systemImage: item.1).padding(.vertical, 10) }
+                }
+            }.navigationTitle("Workflows").toolbar { Button("Done") { dismiss() } }
         }
     }
 }

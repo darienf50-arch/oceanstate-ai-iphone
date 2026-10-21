@@ -13,10 +13,21 @@ jobs:
         run: brew install xcodegen
       - name: Build unsigned device IPA
         run: bash build-ipa.sh
+      - name: Test native client on iPhone simulator
+        run: bash test-ios.sh
       - name: Upload IPA for signing
         uses: actions/upload-artifact@v4
         with:
           name: OceanStateAI-unsigned
           path: build/OceanStateAI-unsigned.ipa
           if-no-files-found: error
+          retention-days: 7
+      - name: Upload simulator verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Native-verification
+          path: |
+            build/NativeConnection.png
+            build/TestResults.xcresult
           retention-days: 7
