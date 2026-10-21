@@ -222,6 +222,8 @@ struct HistoryView: View {
     @State private var results: [ChatSummary] = []
     @State private var createProject = false
     @State private var projectName = ""
+    @State private var renameID: String?
+    @State private var renameTitle = ""
     var body: some View {
         NavigationStack {
             List {
@@ -236,8 +238,13 @@ struct HistoryView: View {
                     Button { Task { await store.open(chat.id) }; dismiss() } label: {
                         HStack { Image(systemName: "bubble.left").foregroundStyle(.secondary); Text(chat.title).foregroundStyle(.primary).lineLimit(2); Spacer(); if chat.id == store.chatID { Image(systemName: "checkmark").foregroundStyle(.cyan) } }.padding(.vertical, 6)
                     }
+                    .contextMenu {
+                        Button("Rename", systemImage: "pencil") { renameID = chat.id; renameTitle = chat.title }
+                        Button("Pin / unpin", systemImage: "pin") { change(chat.id, path: "/pin") }
+                        Button("Archive", systemImage: "archivebox") { change(chat.id, path: "/archive") }
+                    }
                 }
-                if store.hasMoreChats { Button("Load more conversations") { Task { do { try await store.loadChats() } catch { store.error = error.localizedDescription } } } }
+                if store.hasMoreChats && search.isEmpty { Button("Load more conversations") { Task { do { try await store.loadChats() } catch { store.error = error.localizedDescription } } } }
             }
             .searchable(text: $search, prompt: "Search all conversations")
             .navigationTitle("Conversations").toolbar { Button("Done") { dismiss() } }
@@ -257,6 +264,25 @@ struct HistoryView: View {
                 Button("Create") { let name = projectName.trimmingCharacters(in: .whitespacesAndNewlines); guard !name.isEmpty else { return }; Task { do { try await store.createProject(name); projectName = "" } catch { store.error = error.localizedDescription } } }
                 Button("Cancel", role: .cancel) {}
             }
+            .alert("Rename conversation", isPresented: Binding(get: { renameID != nil }, set: { if !$0 { renameID = nil } })) {
+                TextField("Title", text: $renameTitle)
+                Button("Save") {
+                    guard let id = renameID else { return }
+                    let title = renameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !title.isEmpty { change(id, path: "", body: ["chat": ["title": title]]) }
+                    renameID = nil
+                }
+                Button("Cancel", role: .cancel) { renameID = nil }
+            }
+        }
+    }
+    private func change(_ id: String, path: String, body: Object? = nil) {
+        Task {
+            do {
+                _ = try await store.api?.json("/api/v1/chats/\(id)\(path)", method: "POST", body: body)
+                try await store.loadChats(reset: true)
+                if store.chatID == id { await store.reconnect() }
+            } catch { store.error = error.localizedDescription }
         }
     }
 }
