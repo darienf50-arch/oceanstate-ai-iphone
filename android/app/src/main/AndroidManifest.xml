@@ -2,6 +2,9 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <application android:label="Ocean State AI" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:usesCleartextTraffic="false" android:supportsRtl="true" android:icon="@drawable/ic_oceanstate">
         <service android:name="org.torproject.jni.TorService" android:exported="false"/>
         <service android:name=".TabletAccessibility" android:label="Ocean State tablet control" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
