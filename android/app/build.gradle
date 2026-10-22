@@ -1,7 +1,7 @@
 plugins { id 'com.android.application' }
 android {
     namespace 'com.oceanstateai.mobile'
-    compileSdk 36
+    compileSdk 37
     defaultConfig { applicationId 'com.oceanstateai.mobile'; minSdk 30; targetSdk 36; versionCode 1; versionName '1.0.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     signingConfigs {
         release {
