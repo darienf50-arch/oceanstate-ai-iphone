@@ -10,6 +10,7 @@ xcodebuild -workspace OceanStateAI.xcworkspace -scheme OceanStateAI -configurati
   -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData \
   CODE_SIGNING_ALLOWED=NO build
 ditto build/DerivedData/Build/Products/Release-iphoneos/OceanStateAI.app build/Payload/OceanStateAI.app
+cp 'Pods/Target Support Files/Pods-OceanStateAI/Pods-OceanStateAI-acknowledgements.plist' build/Payload/OceanStateAI.app/ThirdPartyNotices.plist
 /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' build/Payload/OceanStateAI.app/Info.plist
 test -f build/Payload/OceanStateAI.app/OceanStateAI
 file build/Payload/OceanStateAI.app/OceanStateAI | grep -q arm64
