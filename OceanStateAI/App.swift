@@ -7,7 +7,7 @@ struct OceanStateApp: App {
     @StateObject private var store = OceanStore()
     var body: some Scene {
         WindowGroup {
-            OceanRoot().environmentObject(store).tint(.cyan)
+            LiveWebRoot().environmentObject(store).tint(.cyan)
                 .preferredColorScheme(.dark).task {
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--native-chat-preview") { store.loadVisualFixture(chat: true); return }

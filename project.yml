@@ -17,8 +17,8 @@ targets:
       path: OceanStateAI/Info.plist
       properties:
         CFBundleDisplayName: Ocean State AI
-        CFBundleShortVersionString: '2.0'
-        CFBundleVersion: '4'
+        CFBundleShortVersionString: '3.0'
+        CFBundleVersion: '5'
         UILaunchScreen: {}
         NSCameraUsageDescription: Attach photos and use video in Ocean State AI.
         NSMicrophoneUsageDescription: Use voice conversations in Ocean State AI.

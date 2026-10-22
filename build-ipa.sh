@@ -4,8 +4,9 @@ cd "$(dirname "$0")"
 command -v xcodebuild >/dev/null || { echo 'Run this on macOS with Xcode installed.'; exit 1; }
 command -v xcodegen >/dev/null || { echo 'Install XcodeGen: brew install xcodegen'; exit 1; }
 xcodegen generate
+pod install --repo-update
 mkdir -p build/Payload
-xcodebuild -project OceanStateAI.xcodeproj -scheme OceanStateAI -configuration Release \
+xcodebuild -workspace OceanStateAI.xcworkspace -scheme OceanStateAI -configuration Release \
   -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData \
   CODE_SIGNING_ALLOWED=NO build
 ditto build/DerivedData/Build/Products/Release-iphoneos/OceanStateAI.app build/Payload/OceanStateAI.app

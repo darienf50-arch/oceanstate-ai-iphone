@@ -2,7 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 xcodegen generate
-xcodebuild build -project OceanStateAI.xcodeproj -scheme OceanStateAI -configuration Debug \
+pod install --repo-update
+xcodebuild build -workspace OceanStateAI.xcworkspace -scheme OceanStateAI -configuration Debug \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath build/Simulator CODE_SIGNING_ALLOWED=NO
 python3 - <<'PY'
