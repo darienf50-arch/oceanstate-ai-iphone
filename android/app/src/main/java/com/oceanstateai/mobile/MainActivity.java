@@ -36,6 +36,8 @@ public final class MainActivity extends ComponentActivity {
     private boolean bound,tunnel;
     private String origin="",theme="ocean",pendingDownload;
     private WebView web;
+    private int pageRetries;
+    private boolean pageFailed;
     private TextView status;
     private FrameLayout content;
     private Atmosphere animation;
@@ -68,7 +70,7 @@ public final class MainActivity extends ComponentActivity {
         Button lessons=new Button(this);lessons.setText("Learn");lessons.setContentDescription("Optionally share a useful lesson");lessons.setOnClickListener(v->shareLesson());bar.addView(lessons);
         controlButton=new Button(this);controlButton.setText("Control");controlButton.setOnClickListener(v->toggleControl());bar.addView(controlButton);
         status.setContentDescription("Connection status. Tap to reload without restarting the tunnel.");
-        status.setOnClickListener(v->{if(web!=null)web.reload();else connect();});
+        status.setOnClickListener(v->{if(web!=null){pageRetries=0;web.loadUrl(origin);}else connect();});
         root.addView(bar);content=new FrameLayout(this);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
         connect();
     }
@@ -134,7 +136,8 @@ public final class MainActivity extends ComponentActivity {
             WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setMediaPlaybackRequiresUserGesture(true);
             CookieManager.getInstance().setAcceptCookie(true);CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
             web.setWebViewClient(new WebViewClient(){
-                @Override public void onPageFinished(WebView view,String url){applyTheme();installDeviceHeaders();CookieManager.getInstance().flush();}
+                @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon){pageFailed=false;}
+                @Override public void onPageFinished(WebView view,String url){if(!pageFailed)pageRetries=0;applyTheme();installDeviceHeaders();CookieManager.getInstance().flush();}
                 @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
                     String url=request.getUrl().toString();if(HostPolicy.sameOrigin(origin,url))return false;
                     if(request.hasGesture()&&"https".equals(request.getUrl().getScheme())){try{startActivity(new Intent(Intent.ACTION_VIEW,request.getUrl()));}catch(Exception ignored){}}
@@ -148,7 +151,13 @@ public final class MainActivity extends ComponentActivity {
                     }catch(Exception ignored){}
                     handler.cancel();message("Host certificate could not be verified.");
                 }
-                @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())message("Connection interrupted • tap here to reload");}
+                @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){
+                    if(!request.isForMainFrame())return;pageFailed=true;int code=error.getErrorCode();
+                    if((code==ERROR_TIMEOUT||code==ERROR_CONNECT||code==ERROR_IO||code==ERROR_HOST_LOOKUP)&&pageRetries<2){
+                        int attempt=++pageRetries;message("Retrying browser connection "+attempt+"/2…");
+                        view.postDelayed(()->{if(!destroyed&&web==view&&pageFailed)view.loadUrl(origin);},2000L*attempt);
+                    }else message("Connection interrupted • tap here to reload");
+                }
             });
             web.setWebChromeClient(new WebChromeClient(){
                 @Override public boolean onShowFileChooser(WebView view,ValueCallback<Uri[]> callback,FileChooserParams params){

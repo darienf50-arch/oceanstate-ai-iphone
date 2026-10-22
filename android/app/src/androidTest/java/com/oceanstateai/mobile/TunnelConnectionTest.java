@@ -11,6 +11,7 @@ import static org.junit.Assert.*;
 public class TunnelConnectionTest {
     @Test(timeout=450000) public void bundledTorReachesPinnedHostWithoutSeparateVpn()throws Exception{
         android.app.Instrumentation runner=InstrumentationRegistry.getInstrumentation();
+        UiDevice.getInstance(runner).wakeUp();
         MainActivity activity=(MainActivity)runner.startActivitySync(new Intent(runner.getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
         try{
             long deadline=SystemClock.elapsedRealtime()+300000;
@@ -18,7 +19,10 @@ public class TunnelConnectionTest {
             assertEquals("Bundled Android Tor did not reach the pinned host over the remote network",HostPolicy.ONION,activity.connectedOrigin());
             UiDevice device=UiDevice.getInstance(runner);
             UiObject login=device.findObject(new UiSelector().textContains("Sign in"));
-            assertTrue("Native probe succeeded but Android WebView did not render the host login page",login.waitForExists(120000));
+            boolean rendered=login.waitForExists(120000);
+            device.takeScreenshot(new java.io.File(runner.getTargetContext().getExternalFilesDir(null),"TunnelWebView.png"));
+            device.dumpWindowHierarchy(new java.io.File(runner.getTargetContext().getExternalFilesDir(null),"TunnelWebView.xml"));
+            assertTrue("Native probe succeeded but Android WebView did not render the host login page",rendered);
         }finally{runner.runOnMainSync(activity::finish);}
     }
 }

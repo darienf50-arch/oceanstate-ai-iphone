@@ -45,11 +45,17 @@ jobs:
           arch: x86_64
           profile: pixel_6
           working-directory: android
-          script: gradle --no-daemon connectedDebugAndroidTest
+          script: |
+            adb shell input keyevent KEYCODE_WAKEUP
+            adb shell wm dismiss-keyguard
+            result=0; gradle --no-daemon connectedDebugAndroidTest || result=$?; adb logcat -d -s chromium AndroidRuntime > build/webview-log.txt; adb pull /sdcard/Android/data/com.oceanstateai.mobile/files build/device-screens; exit $result
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Android-device-verification
-          path: android/app/build/reports/androidTests/
+          path: |
+            android/app/build/reports/androidTests/
+            android/build/webview-log.txt
+            android/build/device-screens/
           if-no-files-found: warn
           retention-days: 14
