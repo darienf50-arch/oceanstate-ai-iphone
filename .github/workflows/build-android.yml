@@ -23,11 +23,13 @@ jobs:
           OCEANSTATE_KEY_PASSWORD: ${{ secrets.OCEANSTATE_ANDROID_KEY_PASSWORD }}
         run: gradle --no-daemon testReleaseUnitTest lintRelease assembleRelease
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: OceanStateAI-Android
           path: |
             android/app/build/outputs/apk/release/*.apk
             android/app/build/reports/lint-results-release.html
+            android/app/build/reports/lint-results-release.txt
             android/app/build/test-results/testReleaseUnitTest/*.xml
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14

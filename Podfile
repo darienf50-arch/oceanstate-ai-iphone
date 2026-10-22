@@ -1,5 +1,5 @@
 platform :ios, '17.0'
-use_frameworks!
+use_frameworks! :linkage => :static
 target 'OceanStateAI' do
   pod 'Tor/CTor', '409.14.1'
 end

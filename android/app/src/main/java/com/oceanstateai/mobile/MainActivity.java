@@ -14,6 +14,8 @@ import android.webkit.*;
 import android.webkit.CookieManager;
 import android.widget.*;
 import androidx.webkit.*;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import org.json.JSONObject;
 import org.torproject.jni.TorService;
 import javax.net.ssl.*;
@@ -23,7 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.cert.*;
 import java.util.concurrent.*;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends ComponentActivity {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final CountDownLatch torBound=new CountDownLatch(1);
     private volatile TorService tor;
@@ -45,6 +47,7 @@ public final class MainActivity extends Activity {
     };
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        getOnBackPressedDispatcher().addCallback(this,new OnBackPressedCallback(true){@Override public void handleOnBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else finish();}});
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         theme=getPreferences(MODE_PRIVATE).getString("theme","ocean");
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(2,11,28));
@@ -222,7 +225,6 @@ public final class MainActivity extends Activity {
         });}
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(request==102&&mediaPermission!=null){boolean granted=results.length>0;for(int value:results)granted&=value==PackageManager.PERMISSION_GRANTED;if(granted)mediaPermission.grant(mediaPermission.getResources());else mediaPermission.deny();mediaPermission=null;}}
-    @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
     @Override protected void onPause(){super.onPause();if(web!=null)web.onPause();}
     @Override protected void onResume(){super.onResume();if(web!=null)web.onResume();}
     @Override protected void onDestroy(){destroyed=true;if(tabletSession!=null)tabletSession.stop();if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
