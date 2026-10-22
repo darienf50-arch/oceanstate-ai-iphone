@@ -52,7 +52,7 @@ static __weak TORThread *_thread = nil;
 - (void)main {
     NSArray *arguments = self.arguments;
     int argc = (int)(arguments.count + 1);
-    char *argv[argc];
+    char *argv[argc + 1]; // Include the required trailing NULL slot.
     argv[0] = "tor";
     for (NSUInteger idx = 0; idx < arguments.count; idx++)
         argv[idx + 1] = (char *)[arguments[idx] UTF8String];
