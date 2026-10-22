@@ -71,8 +71,10 @@ public final class MainActivity extends ComponentActivity {
     private void connect(){
         worker.execute(()->{
             if(probe(HostPolicy.LAN,false)){show(HostPolicy.LAN,false);return;}
+            if(destroyed)return;
             message("Starting private tunnel… First connection may take minutes.");
             runOnUiThread(()->{
+                if(destroyed)return;
                 if(!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)){connectionFailed("Update Android System WebView to use the private tunnel.");return;}
                 if(!bound){bound=bindService(new Intent(this,TorService.class),service,BIND_AUTO_CREATE);}
             });
