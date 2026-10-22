@@ -27,6 +27,8 @@ import java.util.concurrent.*;
 
 public final class MainActivity extends ComponentActivity {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final ScheduledExecutorService localChecks=Executors.newSingleThreadScheduledExecutor();
+    private final java.util.concurrent.atomic.AtomicBoolean connecting=new java.util.concurrent.atomic.AtomicBoolean();
     private final CountDownLatch torBound=new CountDownLatch(1);
     private volatile TorService tor;
     private volatile int socksPort;
@@ -64,29 +66,39 @@ public final class MainActivity extends ComponentActivity {
         Button themes=new Button(this);themes.setText("Theme");themes.setContentDescription("Choose animated theme");themes.setOnClickListener(v->chooseTheme());bar.addView(themes);
         Button lessons=new Button(this);lessons.setText("Learn");lessons.setContentDescription("Optionally share a useful lesson");lessons.setOnClickListener(v->shareLesson());bar.addView(lessons);
         controlButton=new Button(this);controlButton.setText("Control");controlButton.setOnClickListener(v->toggleControl());bar.addView(controlButton);
+        status.setContentDescription("Connection status. Tap to reload without restarting the tunnel.");
+        status.setOnClickListener(v->{if(web!=null)web.reload();else connect();});
         root.addView(bar);content=new FrameLayout(this);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
         connect();
     }
     private void message(String value){runOnUiThread(()->status.setText("Ocean State AI\n"+value));}
     private void connect(){
+        if(destroyed||!connecting.compareAndSet(false,true))return;
         worker.execute(()->{
-            if(probe(HostPolicy.LAN,false)){show(HostPolicy.LAN,false);return;}
+            java.util.concurrent.atomic.AtomicBoolean selected=new java.util.concurrent.atomic.AtomicBoolean();
+            ScheduledFuture<?> localRetry=null;
+            try{
+            message("Checking direct connection…");
+            if(probe(HostPolicy.LAN,false)){selected.set(true);show(HostPolicy.LAN,false);return;}
             if(destroyed)return;
+            localRetry=localChecks.scheduleWithFixedDelay(()->{
+                if(!destroyed&&!selected.get()&&probe(HostPolicy.LAN,false)&&selected.compareAndSet(false,true))show(HostPolicy.LAN,false);
+            },1,3,TimeUnit.SECONDS);
             message("Starting private tunnel… First connection may take minutes.");
             runOnUiThread(()->{
                 if(destroyed)return;
                 if(!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)){connectionFailed("Update Android System WebView to use the private tunnel.");return;}
                 if(!bound){bound=bindService(new Intent(this,TorService.class),service,BIND_AUTO_CREATE);}
             });
-            try{
                 if(!torBound.await(35,TimeUnit.SECONDS))throw new IOException("Tunnel could not start.");
-                for(int attempt=0;attempt<30&&!destroyed;attempt++){
+                for(int attempt=0;attempt<30&&!destroyed&&!selected.get();attempt++){
                     TorService active=tor;if(active!=null)socksPort=active.getSocksPort();
-                    if(socksPort>0&&probe(HostPolicy.ONION,true)){show(HostPolicy.ONION,true);return;}
+                    if(socksPort>0&&probe(HostPolicy.ONION,true)&&selected.compareAndSet(false,true)){show(HostPolicy.ONION,true);return;}
                     Thread.sleep(2000);
                 }
-                if(!destroyed)runOnUiThread(()->connectionFailed("Keep the host online. Try another network if Tor is blocked."));
-            }catch(Exception e){if(!destroyed)runOnUiThread(()->connectionFailed("Tunnel unavailable. Keep the host online and retry."));}
+                if(!destroyed&&!selected.get())runOnUiThread(()->connectionFailed("Keep the host online. Try another network if Tor is blocked."));
+            }catch(Exception e){if(!destroyed&&!selected.get())runOnUiThread(()->connectionFailed("Tunnel unavailable. Keep the host online and retry."));}
+            finally{if(localRetry!=null)localRetry.cancel(true);connecting.set(false);}
         });
     }
     private void connectionFailed(String text){
@@ -110,7 +122,7 @@ public final class MainActivity extends ComponentActivity {
         result.setInstanceFollowRedirects(false);result.setConnectTimeout(10000);result.setReadTimeout(15000);return result;
     }
     private boolean probe(String base,boolean throughTor){
-        HttpsURLConnection request=null;try{request=connection(base+"/api/config",throughTor);return request.getResponseCode()==200;}catch(Exception e){return false;}finally{if(request!=null)request.disconnect();}
+        HttpsURLConnection request=null;try{request=connection(base+"/api/config",throughTor);if(!throughTor){request.setConnectTimeout(2500);request.setReadTimeout(2500);}return request.getResponseCode()==200;}catch(Exception e){return false;}finally{if(request!=null)request.disconnect();}
     }
     @SuppressWarnings("SetJavaScriptEnabled")
     private void show(String base,boolean throughTor){runOnUiThread(()->{
@@ -135,7 +147,7 @@ public final class MainActivity extends ComponentActivity {
                     }catch(Exception ignored){}
                     handler.cancel();message("Host certificate could not be verified.");
                 }
-                @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())message("Connection interrupted. Use Back or reopen the app to retry.");}
+                @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error){if(request.isForMainFrame())message("Connection interrupted • tap here to reload");}
             });
             web.setWebChromeClient(new WebChromeClient(){
                 @Override public boolean onShowFileChooser(WebView view,ValueCallback<Uri[]> callback,FileChooserParams params){
@@ -237,7 +249,7 @@ public final class MainActivity extends ComponentActivity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(request==102&&mediaPermission!=null){boolean granted=results.length>0;for(int value:results)granted&=value==PackageManager.PERMISSION_GRANTED;if(granted)mediaPermission.grant(mediaPermission.getResources());else mediaPermission.deny();mediaPermission=null;}}
     @Override protected void onPause(){super.onPause();if(web!=null)web.onPause();}
     @Override protected void onResume(){super.onResume();if(web!=null)web.onResume();}
-    @Override protected void onDestroy(){destroyed=true;if(tabletSession!=null)tabletSession.stop();if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){destroyed=true;localChecks.shutdownNow();if(tabletSession!=null)tabletSession.stop();if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
     private final class Atmosphere extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         Atmosphere(){super(MainActivity.this);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);setClickable(false);}
