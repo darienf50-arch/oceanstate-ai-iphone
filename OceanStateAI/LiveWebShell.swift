@@ -39,13 +39,13 @@ final class HostTrust: NSObject, URLSessionDelegate {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         config.timeoutIntervalForResource = timeout
-        if tunnel { config.connectionProxyDictionary = proxy }
+        if tunnel { config.proxyConfigurations = [ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: 19062))] }
         let session = URLSession(configuration: config, delegate: trust, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         do {
             let (_, response) = try await session.data(from: url.appendingPathComponent("api/config"))
             return (response as? HTTPURLResponse)?.statusCode == 200
-        } catch { return false }
+        } catch { NSLog("OceanState connection probe (%@): %@", tunnel ? "tunnel" : "LAN", error.localizedDescription); return false }
     }
     func connect() async {
         guard origin == nil else { return }
@@ -201,7 +201,7 @@ struct MobileLessonView: View {
         guard let origin = connection.origin else { return }
         sending = true; defer { sending = false }
         let config = URLSessionConfiguration.ephemeral
-        if connection.useTor { config.connectionProxyDictionary = connection.proxy }
+        if connection.useTor { config.proxyConfigurations = [ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: 19062))] }
         let trust = HostTrust()
         let session = URLSession(configuration: config, delegate: trust, delegateQueue: nil)
         defer { session.invalidateAndCancel() }

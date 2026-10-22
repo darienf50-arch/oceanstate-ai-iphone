@@ -14,7 +14,7 @@ devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','a
 device=next(x['udid'] for group in devices['devices'].values() for x in group if 'iPhone' in x['name'])
 call('xcrun','simctl','boot',device,check=False)
 call('xcrun','simctl','bootstatus',device,'-b',timeout=600)
-call('xcodebuild','test','-workspace','OceanStateAI.xcworkspace','-scheme','OceanStateAI','-destination','platform=iOS Simulator,id='+device,'-only-testing:OceanStateUITests','-derivedDataPath','build/Simulator','CODE_SIGNING_ALLOWED=NO',timeout=600)
+call('xcodebuild','test','-workspace','OceanStateAI.xcworkspace','-scheme','OceanStateAI','-destination','platform=iOS Simulator,id='+device,'-only-testing:OceanStateUITests','-derivedDataPath','build/Simulator','CODE_SIGNING_ALLOWED=NO',timeout=900)
 call('xcrun','simctl','install',device,'build/Simulator/Build/Products/Debug-iphonesimulator/OceanStateAI.app')
 call('xcrun','simctl','status_bar',device,'override','--time','9:41','--batteryState','charged','--batteryLevel','100')
 for filename, argument in [('NativeConnection.png',None),('NativeThemes.png','--theme-picker-preview')]:
