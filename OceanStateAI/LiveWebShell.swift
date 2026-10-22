@@ -2,7 +2,6 @@ import SwiftUI
 import WebKit
 import Network
 import CryptoKit
-import Tor
 
 // A transport for this application only. It never changes system VPN settings.
 final class HostTrust: NSObject, URLSessionDelegate {

@@ -36,7 +36,7 @@ public class TabletControlTest {
         String handle=windows.getJSONArray("windows").getJSONObject(0).getString("window_handle");
         JSONObject inspected=run("inspect",new JSONObject().put("window_handle",handle));assertTrue(inspected.toString(),inspected.getBoolean("success"));
         JSONArray nodes=inspected.getJSONArray("controls");String input="",button="";
-        for(int index=0;index<nodes.length();index++){JSONObject node=nodes.getJSONObject(index);if(node.optBoolean("editable"))input=node.getString("runtime_id");if(node.optString("name").equals("Verify tablet action"))button=node.getString("runtime_id");}
+        for(int index=0;index<nodes.length();index++){JSONObject node=nodes.getJSONObject(index);if(node.optBoolean("editable"))input=node.getString("runtime_id");if(node.optString("description").equals("Verification submit"))button=node.getString("runtime_id");}
         assertFalse("Editable input not inspected",input.isEmpty());assertFalse("Button not inspected",button.isEmpty());
         assertTrue(run("type",new JSONObject().put("window_handle",handle).put("runtime_id",input).put("text","Android verified")).getBoolean("success"));
         assertTrue(run("invoke",new JSONObject().put("window_handle",handle).put("runtime_id",button)).getBoolean("success"));
