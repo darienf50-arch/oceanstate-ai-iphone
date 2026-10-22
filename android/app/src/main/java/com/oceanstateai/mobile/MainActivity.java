@@ -47,6 +47,13 @@ public final class MainActivity extends ComponentActivity {
     };
     @Override public void onCreate(Bundle state){
         super.onCreate(state);
+        if(BuildConfig.DEBUG && getIntent().getBooleanExtra("control-fixture",false)){
+            LinearLayout fixture=new LinearLayout(this);fixture.setOrientation(LinearLayout.VERTICAL);fixture.setPadding(30,100,30,30);
+            TextView title=new TextView(this);title.setText("Ocean State tablet control verification");fixture.addView(title);
+            EditText input=new EditText(this);input.setHint("Verification input");input.setContentDescription("Verification input");fixture.addView(input);
+            Button button=new Button(this);button.setText("Verify tablet action");fixture.addView(button);button.setOnClickListener(v->title.setText("Verified: "+input.getText()));
+            setContentView(fixture);return;
+        }
         getOnBackPressedDispatcher().addCallback(this,new OnBackPressedCallback(true){@Override public void handleOnBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else finish();}});
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         theme=getPreferences(MODE_PRIVATE).getString("theme","ocean");

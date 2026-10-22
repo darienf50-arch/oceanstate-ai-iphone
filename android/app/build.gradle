@@ -1,5 +1,6 @@
 plugins { id 'com.android.application' }
 android {
+    buildFeatures { buildConfig true }
     namespace 'com.oceanstateai.mobile'
     compileSdk 37
     defaultConfig { applicationId 'com.oceanstateai.mobile'; minSdk 30; targetSdk 36; versionCode 1; versionName '1.0.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
@@ -19,4 +20,6 @@ dependencies {
     implementation 'androidx.webkit:webkit:1.14.0'
     implementation 'info.guardianproject:tor-android:0.4.9.14'
     testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }

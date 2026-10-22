@@ -20,6 +20,7 @@ final class TabletSession {
     private volatile boolean active;
     private JSONObject pending;
     private int failures;
+    private volatile long lastBind;
     TabletSession(Context context,Transport transport,Listener listener)throws Exception{
         this.transport=transport;this.listener=listener;
         ActivityManager.MemoryInfo memory=new ActivityManager.MemoryInfo();((ActivityManager)context.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryInfo(memory);
@@ -33,9 +34,13 @@ final class TabletSession {
                 JSONObject registration=transport.post("register",new JSONObject().put("name",Build.MANUFACTURER+" "+Build.MODEL).put("hardware",hardware),token);
                 id=registration.getString("device_id");secret=registration.getString("device_token");
                 transport.post("file-bind",new JSONObject().put("device_id",id).put("device_secret",secret).put("learning",false),token);
+                lastBind=System.currentTimeMillis();
                 active=true;TabletAccessibility.allowed=true;listener.changed();listener.status("Tablet control enabled • Stop control to disconnect");
                 tasks.scheduleWithFixedDelay(this::poll,0,1500,TimeUnit.MILLISECONDS);
-                tasks.scheduleWithFixedDelay(()->{if(active)try{transport.post("heartbeat",new JSONObject().put("device_id",id),secret);}catch(Exception e){listener.status("Tablet connection interrupted");}},3,5,TimeUnit.SECONDS);
+                tasks.scheduleWithFixedDelay(()->{if(active)try{
+                    transport.post("heartbeat",new JSONObject().put("device_id",id),secret);
+                    if(System.currentTimeMillis()-lastBind>30000){transport.post("file-bind",new JSONObject().put("device_id",id).put("device_secret",secret).put("learning",false),token);lastBind=System.currentTimeMillis();}
+                }catch(Exception e){listener.status("Tablet connection interrupted");}},3,5,TimeUnit.SECONDS);
             }catch(Exception e){listener.status("Could not enable control. Sign in and enable Android Accessibility first.");stop();}
         });
     }
