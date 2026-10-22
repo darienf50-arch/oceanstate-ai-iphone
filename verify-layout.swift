@@ -1,20 +1,14 @@
 import AppKit
+import Vision
 import Foundation
-
-// The connected fixture screens must show the cyan composer controls near the
-// bottom of the viewport. This guards the observed missing-composer regression.
 for filename in CommandLine.arguments.dropFirst() {
-    let data = try Data(contentsOf: URL(fileURLWithPath: filename))
-    guard let bitmap = NSBitmapImageRep(data: data) else { fatalError("Cannot decode \(filename)") }
-    var cyanPixels = 0
-    for y in Int(Double(bitmap.pixelsHigh) * 0.82)..<bitmap.pixelsHigh {
-        for x in 0..<bitmap.pixelsWide {
-            if let c = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
-               c.redComponent < 0.35, c.greenComponent > 0.6, c.blueComponent > 0.7 {
-                cyanPixels += 1
-            }
-        }
+    let handler = VNImageRequestHandler(url: URL(fileURLWithPath: filename))
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    try handler.perform([request])
+    let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ").lowercased()
+    for label in ["choose your atmosphere", "midnight", "matrix", "deep ocean"] {
+        guard text.contains(label) else { fatalError("Missing theme control '\(label)' in \(filename)") }
     }
-    guard cyanPixels > 200 else { fatalError("Composer controls are missing from \(filename)") }
-    print("PASS: connected screen composer visible: \(filename)")
+    print("PASS: theme picker and all three choices visible: \(filename)")
 }

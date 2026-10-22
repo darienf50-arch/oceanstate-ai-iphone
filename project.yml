@@ -40,6 +40,15 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: OceanStateAI
+  OceanStateUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: OceanStateAI
 schemes:
   OceanStateAI:
     build:
@@ -48,4 +57,4 @@ schemes:
     archive:
       config: Release
     test:
-      targets: [OceanStateTests]
+      targets: [OceanStateTests, OceanStateUITests]

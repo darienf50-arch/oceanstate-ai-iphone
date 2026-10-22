@@ -85,6 +85,7 @@ struct MobileThemePicker: View {
                                 .overlay(RoundedRectangle(cornerRadius: 22).stroke(theme.accent.opacity(selected == theme.rawValue ? 0.8 : 0.18), lineWidth: selected == theme.rawValue ? 2 : 1))
                         }.buttonStyle(.plain).foregroundStyle(theme.accent)
                             .accessibilityLabel(theme.title + (selected == theme.rawValue ? ", selected" : ""))
+                            .accessibilityIdentifier("theme-" + theme.rawValue)
                     }
                     Text("Themes stay on this iPhone. Animations respect Reduce Motion and never block chat controls.").font(.caption).foregroundStyle(.secondary)
                 }.padding()
