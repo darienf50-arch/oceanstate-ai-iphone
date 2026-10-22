@@ -42,6 +42,7 @@ public final class MainActivity extends ComponentActivity {
     private ValueCallback<Uri[]> chooser;
     private PermissionRequest mediaPermission;
     private TabletSession tabletSession;
+    private TunnelProxy tunnelProxy;
     private Button controlButton;
     private final ServiceConnection service=new ServiceConnection(){
         @Override public void onServiceConnected(ComponentName name,IBinder binder){tor=((TorService.LocalBinder)binder).getService();torBound.countDown();}
@@ -174,7 +175,12 @@ public final class MainActivity extends ComponentActivity {
             });
             content.removeAllViews();content.addView(web,new FrameLayout.LayoutParams(-1,-1));animation=new Atmosphere();content.addView(animation,new FrameLayout.LayoutParams(-1,-1));web.loadUrl(origin);applyTheme();message(throughTor?"Private tunnel • AI on 4090 host":"Direct connection • AI on 4090 host");
         };
-        if(throughTor)ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder().addProxyRule("socks://127.0.0.1:"+socksPort).build(),getMainExecutor(),open);
+        if(throughTor){
+            try{
+                if(tunnelProxy==null)tunnelProxy=new TunnelProxy(Uri.parse(HostPolicy.ONION).getHost(),socksPort);
+                ProxyController.getInstance().setProxyOverride(new ProxyConfig.Builder().addProxyRule("http://127.0.0.1:"+tunnelProxy.port()).build(),getMainExecutor(),open);
+            }catch(IOException e){connectionFailed("Could not open the browser tunnel. Tap the connection status to retry.");}
+        }
         else if(WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE))ProxyController.getInstance().clearProxyOverride(getMainExecutor(),open);
         else open.run();
     });}
@@ -249,7 +255,7 @@ public final class MainActivity extends ComponentActivity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(request==102&&mediaPermission!=null){boolean granted=results.length>0;for(int value:results)granted&=value==PackageManager.PERMISSION_GRANTED;if(granted)mediaPermission.grant(mediaPermission.getResources());else mediaPermission.deny();mediaPermission=null;}}
     @Override protected void onPause(){super.onPause();if(web!=null)web.onPause();}
     @Override protected void onResume(){super.onResume();if(web!=null)web.onResume();}
-    @Override protected void onDestroy(){destroyed=true;localChecks.shutdownNow();if(tabletSession!=null)tabletSession.stop();if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){destroyed=true;localChecks.shutdownNow();if(tunnelProxy!=null)tunnelProxy.close();if(tabletSession!=null)tabletSession.stop();if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
     private final class Atmosphere extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         Atmosphere(){super(MainActivity.this);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);setClickable(false);}
