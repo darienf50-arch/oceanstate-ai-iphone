@@ -178,6 +178,7 @@ public final class MainActivity extends ComponentActivity {
         web.evaluateJavascript("(()=>{let s=document.getElementById('oceanstate-mobile-theme');if(!s){s=document.createElement('style');s.id='oceanstate-mobile-theme';document.head.append(s)}s.textContent="+JSONObject.quote(css)+"})()",null);
     }
     private String login(){String cookies=CookieManager.getInstance().getCookie(origin);if(cookies==null)return "";for(String item:cookies.split(";")){String value=item.trim();if(value.startsWith("token="))return value.substring(6);}return "";}
+    String connectedOrigin(){return origin;}
     private void toggleControl(){
         if(tabletSession!=null&&tabletSession.enabled()){tabletSession.stop();tabletSession=null;controlButton.setText("Control");message("Tablet control stopped");return;}
         if(origin.isEmpty()||login().isEmpty()){Toast.makeText(this,"Connect and sign in first.",Toast.LENGTH_LONG).show();return;}
