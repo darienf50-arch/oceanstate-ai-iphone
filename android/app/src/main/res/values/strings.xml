@@ -1,0 +1,3 @@
+<resources>
+    <string name="control_description">Optional remote tablet assistance. While you enable a signed-in control session, your Ocean State host can inspect visible controls, request screenshots, tap, type and navigate. Screen information is sent only when an action is requested. Stop in the app or turn off this service in Android Settings. No continuous keyboard or screen recording. Protected screens remain protected.</string>
+</resources>

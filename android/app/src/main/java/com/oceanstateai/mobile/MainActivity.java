@@ -11,6 +11,7 @@ import android.os.*;
 import android.provider.Settings;
 import android.view.*;
 import android.webkit.*;
+import android.webkit.CookieManager;
 import android.widget.*;
 import androidx.webkit.*;
 import org.json.JSONObject;
@@ -36,6 +37,8 @@ public final class MainActivity extends Activity {
     private Atmosphere animation;
     private ValueCallback<Uri[]> chooser;
     private PermissionRequest mediaPermission;
+    private TabletSession tabletSession;
+    private Button controlButton;
     private final ServiceConnection service=new ServiceConnection(){
         @Override public void onServiceConnected(ComponentName name,IBinder binder){tor=((TorService.LocalBinder)binder).getService();torBound.countDown();}
         @Override public void onServiceDisconnected(ComponentName name){tor=null;}
@@ -50,6 +53,7 @@ public final class MainActivity extends Activity {
         status=new TextView(this);status.setTextColor(Color.WHITE);status.setTextSize(12);status.setText("Ocean State AI\nConnecting to your host…");bar.addView(status,new LinearLayout.LayoutParams(0,64,1));
         Button themes=new Button(this);themes.setText("Theme");themes.setContentDescription("Choose animated theme");themes.setOnClickListener(v->chooseTheme());bar.addView(themes);
         Button lessons=new Button(this);lessons.setText("Learn");lessons.setContentDescription("Optionally share a useful lesson");lessons.setOnClickListener(v->shareLesson());bar.addView(lessons);
+        controlButton=new Button(this);controlButton.setText("Control");controlButton.setOnClickListener(v->toggleControl());bar.addView(controlButton);
         root.addView(bar);content=new FrameLayout(this);root.addView(content,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
         connect();
     }
@@ -105,7 +109,7 @@ public final class MainActivity extends Activity {
             WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setDomStorageEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(true);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setMediaPlaybackRequiresUserGesture(true);
             CookieManager.getInstance().setAcceptCookie(true);CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
             web.setWebViewClient(new WebViewClient(){
-                @Override public void onPageFinished(WebView view,String url){applyTheme();CookieManager.getInstance().flush();}
+                @Override public void onPageFinished(WebView view,String url){applyTheme();installDeviceHeaders();CookieManager.getInstance().flush();}
                 @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
                     String url=request.getUrl().toString();if(HostPolicy.sameOrigin(origin,url))return false;
                     if(request.hasGesture()&&"https".equals(request.getUrl().getScheme())){try{startActivity(new Intent(Intent.ACTION_VIEW,request.getUrl()));}catch(Exception ignored){}}
@@ -162,6 +166,35 @@ public final class MainActivity extends Activity {
         web.evaluateJavascript("(()=>{let s=document.getElementById('oceanstate-mobile-theme');if(!s){s=document.createElement('style');s.id='oceanstate-mobile-theme';document.head.append(s)}s.textContent="+JSONObject.quote(css)+"})()",null);
     }
     private String login(){String cookies=CookieManager.getInstance().getCookie(origin);if(cookies==null)return "";for(String item:cookies.split(";")){String value=item.trim();if(value.startsWith("token="))return value.substring(6);}return "";}
+    private void toggleControl(){
+        if(tabletSession!=null&&tabletSession.enabled()){tabletSession.stop();tabletSession=null;controlButton.setText("Control");message("Tablet control stopped");return;}
+        if(origin.isEmpty()||login().isEmpty()){Toast.makeText(this,"Connect and sign in first.",Toast.LENGTH_LONG).show();return;}
+        new AlertDialog.Builder(this).setTitle("Allow host assistance on this tablet?")
+            .setMessage("While enabled, your signed-in Ocean State host can inspect visible controls, request screenshots, tap, type and navigate on this tablet. No continuous screen or keyboard recording. Android blocks protected screens. You can stop control here or disable the Accessibility service at any time. Your tablet cannot control the host.\n\nAndroid requires you to enable Ocean State tablet control in Accessibility Settings once, then return here and enable this session.")
+            .setNegativeButton("Cancel",null).setPositiveButton(TabletAccessibility.instance==null?"Open Settings":"Enable this session",(dialog,which)->{
+                if(TabletAccessibility.instance==null){startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));return;}
+                try{
+                    tabletSession=new TabletSession(this,this::relayPost,new TabletSession.Listener(){public void status(String text){message(text);}public void changed(){runOnUiThread(()->{controlButton.setText(tabletSession!=null&&tabletSession.enabled()?"Stop":"Control");installDeviceHeaders();});}});
+                    tabletSession.start(login());
+                }catch(Exception e){Toast.makeText(this,"Could not prepare tablet control.",Toast.LENGTH_LONG).show();}
+            }).show();
+    }
+    private JSONObject relayPost(String path,JSONObject body,String credential)throws Exception{
+        HttpsURLConnection request=connection(origin+"/remote/"+path,tunnel);
+        try{
+            request.setRequestMethod("POST");request.setDoOutput(true);request.setRequestProperty("Authorization","Bearer "+credential);request.setRequestProperty("Content-Type","application/json");
+            try(OutputStream output=request.getOutputStream()){output.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+            if(request.getResponseCode()!=200)throw new IOException("Relay request rejected.");
+            try(InputStream input=request.getInputStream();ByteArrayOutputStream bytes=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int count;while((count=input.read(buffer))!=-1){if(bytes.size()+count>1024*1024)throw new IOException("Oversized relay response.");bytes.write(buffer,0,count);}return new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));}
+        }finally{request.disconnect();}
+    }
+    private void installDeviceHeaders(){
+        if(web==null)return;
+        try{
+            JSONObject device=new JSONObject().put("id",tabletSession!=null?tabletSession.id:"").put("secret",tabletSession!=null?tabletSession.secret:"");
+            web.evaluateJavascript("(()=>{window.__oceanDevice="+device+";if(window.__oceanFetch)return;window.__oceanFetch=window.fetch;window.fetch=function(input,options){const r=new Request(input,options),d=window.__oceanDevice;if(new URL(r.url).origin===location.origin&&d&&d.id){const h=new Headers(r.headers);h.set('X-OceanState-Device-Id',d.id);h.set('X-OceanState-Device-Session',d.secret);return window.__oceanFetch.call(this,new Request(r,{headers:h}));}return window.__oceanFetch.call(this,r);};})()",null);
+        }catch(Exception ignored){}
+    }
     private void shareLesson(){
         if(origin.isEmpty()){Toast.makeText(this,"Connect and sign in first.",Toast.LENGTH_SHORT).show();return;}
         LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(35,12,35,12);
@@ -192,7 +225,7 @@ public final class MainActivity extends Activity {
     @Override public void onBackPressed(){if(web!=null&&web.canGoBack())web.goBack();else super.onBackPressed();}
     @Override protected void onPause(){super.onPause();if(web!=null)web.onPause();}
     @Override protected void onResume(){super.onResume();if(web!=null)web.onResume();}
-    @Override protected void onDestroy(){destroyed=true;if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){destroyed=true;if(tabletSession!=null)tabletSession.stop();if(chooser!=null)chooser.onReceiveValue(null);if(mediaPermission!=null)mediaPermission.deny();if(bound)unbindService(service);if(web!=null){web.stopLoading();web.destroy();}worker.shutdownNow();super.onDestroy();}
     private final class Atmosphere extends View {
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
         Atmosphere(){super(MainActivity.this);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);setClickable(false);}
