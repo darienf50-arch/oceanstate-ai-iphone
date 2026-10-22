@@ -8,6 +8,7 @@ import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class MobileThemeTest {
+    @org.junit.Rule public DeviceDiagnostics diagnostics=new DeviceDiagnostics();
     @Test public void themeChoicesPersistAndRender()throws Exception{
         android.app.Instrumentation runner=InstrumentationRegistry.getInstrumentation();
         MainActivity activity=(MainActivity)runner.startActivitySync(new Intent(runner.getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));

@@ -48,7 +48,7 @@ jobs:
           script: |
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            result=0; gradle --no-daemon connectedDebugAndroidTest || result=$?; adb logcat -d -s chromium AndroidRuntime > build/webview-log.txt; adb pull /sdcard/Android/data/com.oceanstateai.mobile/files build/device-screens; exit $result
+            result=0; gradle --no-daemon connectedDebugAndroidTest || result=$?; adb logcat -d -s chromium AndroidRuntime > build/webview-log.txt; adb pull /sdcard/Download/ocean-diagnostics build/device-screens; exit $result
       - uses: actions/upload-artifact@v4
         if: always()
         with:

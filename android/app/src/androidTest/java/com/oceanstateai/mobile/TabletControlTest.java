@@ -12,6 +12,7 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class TabletControlTest {
+    @org.junit.Rule public DeviceDiagnostics diagnostics=new DeviceDiagnostics();
     private android.app.Instrumentation instrumentation;
     @Before public void prepare()throws Exception{
         instrumentation=InstrumentationRegistry.getInstrumentation();
