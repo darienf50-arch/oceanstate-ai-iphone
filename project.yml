@@ -32,6 +32,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: OceanStateAI/OceanTorBridge.h
+        HEADER_SEARCH_PATHS: '$(inherited) "$(PODS_XCFRAMEWORKS_BUILD_DIR)/OceanCTor/tor.framework/Headers"'
   OceanStateTests:
     type: bundle.unit-test
     platform: iOS
