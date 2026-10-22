@@ -22,6 +22,7 @@ final class HostTrust: NSObject, URLSessionDelegate {
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if let value = Self.credential(challenge) { completionHandler(.useCredential, value) }
+        else if Self.pins[challenge.protectionSpace.host] != nil { completionHandler(.cancelAuthenticationChallenge, nil) }
         else { completionHandler(.performDefaultHandling, nil) }
     }
 }
@@ -156,6 +157,7 @@ struct HostWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
                      completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
             if let credential = HostTrust.credential(challenge) { completionHandler(.useCredential, credential) }
+            else if HostTrust.pins[challenge.protectionSpace.host] != nil { completionHandler(.cancelAuthenticationChallenge, nil) }
             else { completionHandler(.performDefaultHandling, nil) }
         }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
