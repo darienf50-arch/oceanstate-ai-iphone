@@ -4,17 +4,14 @@ import UniformTypeIdentifiers
 
 @main
 struct OceanStateApp: App {
-    @StateObject private var store = OceanStore()
     var body: some Scene {
         WindowGroup {
-            LiveWebRoot().environmentObject(store).tint(.cyan)
-                .preferredColorScheme(.dark).task {
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--native-chat-preview") { store.loadVisualFixture(chat: true); return }
-                    if ProcessInfo.processInfo.arguments.contains("--native-welcome-preview") { store.loadVisualFixture(chat: false); return }
-                    #endif
-                    await store.restore()
-                }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--theme-picker-preview") { MobileThemePicker() }
+            else { LiveWebRoot() }
+            #else
+            LiveWebRoot()
+            #endif
         }
     }
 }

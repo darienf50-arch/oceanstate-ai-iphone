@@ -87,6 +87,9 @@ final class HostTrust: NSObject, URLSessionDelegate {
 struct LiveWebRoot: View {
     @StateObject private var connection = LiveConnection()
     @State private var shareLesson = false
+    @State private var themes = false
+    @AppStorage("oceanstate.mobile.theme") private var themeName = MobileTheme.ocean.rawValue
+    private var theme: MobileTheme { MobileTheme(rawValue: themeName) ?? .ocean }
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -95,10 +98,14 @@ struct LiveWebRoot: View {
                     Text(connection.status).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button { themes = true } label: { Image(systemName: "paintpalette") }.accessibilityLabel("Choose theme")
                 if connection.origin != nil { Button("Share lesson") { shareLesson = true }.font(.caption) }
             }.padding(12)
             if let origin = connection.origin {
-                HostWebView(origin: origin, tunnel: connection.useTor)
+                ZStack {
+                    HostWebView(origin: origin, tunnel: connection.useTor, theme: theme)
+                    ThemeAnimation(theme: theme)
+                }
             } else {
                 Spacer()
                 if !connection.failed { ProgressView().padding() }
@@ -107,16 +114,18 @@ struct LiveWebRoot: View {
                 Spacer()
             }
         }
-        .background(Color.black).preferredColorScheme(.dark)
+        .background(theme.background).tint(theme.accent).preferredColorScheme(.dark)
         .task { await connection.connect() }
         .sheet(isPresented: $shareLesson) { MobileLessonView(connection: connection) }
+        .sheet(isPresented: $themes) { MobileThemePicker() }
     }
 }
 
 struct HostWebView: UIViewRepresentable {
     let origin: URL
     let tunnel: Bool
-    func makeCoordinator() -> Coordinator { Coordinator(origin: origin) }
+    let theme: MobileTheme
+    func makeCoordinator() -> Coordinator { Coordinator(origin: origin, theme: theme) }
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         // Persistent per-app storage keeps sign-in; it never imports PC cookies.
@@ -132,10 +141,19 @@ struct HostWebView: UIViewRepresentable {
         view.load(URLRequest(url: origin))
         return view
     }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.theme = theme
+        context.coordinator.applyTheme(uiView)
+    }
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let origin: URL
-        init(origin: URL) { self.origin = origin }
+        var theme: MobileTheme
+        init(origin: URL, theme: MobileTheme) { self.origin = origin; self.theme = theme }
+        func applyTheme(_ webView: WKWebView) {
+            guard let bytes = try? JSONSerialization.data(withJSONObject: [theme.css]), let json = String(data: bytes, encoding: .utf8) else { return }
+            webView.evaluateJavaScript("(()=>{let s=document.getElementById('oceanstate-mobile-theme');if(!s){s=document.createElement('style');s.id='oceanstate-mobile-theme';document.head.append(s)}s.textContent=\(json)[0]})()", completionHandler: nil)
+        }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { applyTheme(webView) }
         func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
                      completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
             if let credential = HostTrust.credential(challenge) { completionHandler(.useCredential, credential) }
